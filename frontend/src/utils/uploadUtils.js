@@ -1,5 +1,3 @@
-// components/upload/uploadUtils.js
-
 /**
  * Format bytes into a human-readable string.
  * @param {number} bytes
@@ -26,18 +24,22 @@ export function formatBytes(bytes, decimals = 2) {
  */
 export function validateFile(file) {
   if (!file) {
-    return { valid: false, error: 'A PCAP file is required.' };
+    return { valid: false, error: 'No file selected.' };
   }
 
-  const name = file.name || '';
-  const dotIndex = name.lastIndexOf('.');
-  if (dotIndex === -1) {
-    return { valid: false, error: 'This file type is not supported. Please upload a .pcap or .pcapng file.' };
+  const allowedExtensions = ['.pcap', '.pcapng'];
+  const fileName = file.name.toLowerCase();
+  
+  const isValidExt = allowedExtensions.some(ext => fileName.endsWith(ext));
+  
+  if (!isValidExt) {
+    return { valid: false, error: 'Invalid file format. Please upload a .pcap or .pcapng file.' };
   }
 
-  const ext = name.slice(dotIndex).toLowerCase();
-  if (ext !== '.pcap' && ext !== '.pcapng') {
-    return { valid: false, error: 'This file type is not supported. Please upload a .pcap or .pcapng file.' };
+  // Example size limit: 500MB (can be adjusted)
+  const MAX_SIZE_MB = 500;
+  if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+    return { valid: false, error: `File size exceeds the ${MAX_SIZE_MB}MB limit.` };
   }
 
   return { valid: true };
