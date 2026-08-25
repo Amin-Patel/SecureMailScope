@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analysis Workspace - SecureMailScope</title>
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- BubbledotICG-FinePos Font from OnlineWebFonts -->
+  <link href="https://db.onlinewebfonts.com/c/8cb707a9b8a73f8a7403336b861c3074?family=BubbledotICG-FinePos" rel="stylesheet" type="text/css"/>
+  <!-- Font Awesome 6.5.2 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Analysis Workspace Specific Styling */
+    .workspace-container {
+      width: 100%;
+      max-width: 1100px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      margin: clamp(12px, 2vh, 24px) 0;
+      overflow: hidden;
+    }
+
+    /* Workspace Header */
+    .workspace-title-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+
+    .analysis-meta-info {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Secondary Nav (Tab bar) */
+    .tabs-bar {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 8px;
+      margin-bottom: 20px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: clamp(13px, 1.4vw, 15px);
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.2s, color 0.2s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn.active {
+      color: #000000;
+      background: #ffffff;
+    }
+
+    /* Tab content container */
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      display: none;
+      padding-right: 6px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .tab-content::-webkit-scrollbar {
+      width: 6px;
+    }
+    .tab-content::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.15);
+      border-radius: 99px;
+    }
+
+    /* Cards */
+    .glass-card {
+      background: rgba(40, 40, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: clamp(16px, 2.5vw, 24px);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+      margin-bottom: 20px;
+    }
+
+    /* Tables & lists inside tabs */
+    .data-table-wrapper {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow-x: auto;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .data-table th {
+      font-weight: 600;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.02);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+
+    .data-table tbody tr {
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .data-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Filters row */
+    .filters-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .filter-select, .search-input {
+      background: rgba(40, 40, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--font-sans);
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    /* Detail Drawer sliding from right */
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      background: #18181a;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      padding: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .drawer-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .drawer-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .drawer-body::-webkit-scrollbar {
+      width: 4px;
+    }
+    .drawer-body::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .drawer-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 0.05em;
+    }
+
+    /* Severity badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-high { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.3); }
+    .badge-medium { background: rgba(234, 179, 8, 0.2); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); }
+    .badge-low { background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); }
+
+    /* Score circle inside workspace */
+    .score-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .score-circle-sm {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 3px solid #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    /* Code block for evidence */
+    .code-block {
+      background: #09090b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #10b981;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* Sub-tabs in Session Drawer */
+    .sub-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 4px;
+    }
+    .sub-tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .sub-tab-btn.active {
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+    }
+
+    .sub-tab-content {
+      display: none;
+    }
+    .sub-tab-content.active {
+      display: block;
+    }
+
+    /* Generate Report styling */
+    .report-preview-box {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 24px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #e4e4e7;
+    }
+
+    .btn-action {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 600;
+      border: none;
+      border-radius: 999px;
+      padding: 10px 24px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      text-decoration: none;
+      transition: transform 0.2s ease;
+    }
+    .btn-action:hover {
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <!-- Background video -->
+  <div class="bg">
+    <video class="bg-video" autoplay muted loop playsinline>
+      <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4" type="video/mp4" />
+    </video>
+  </div>
+
+  <div class="page">
+    <!-- Header -->
+    <header class="header">
+      <a href="index.html" class="logo" aria-label="Logo Home" style="display: grid; place-items: center; width: clamp(40px, 4.4vw, 46px); height: clamp(40px, 4.4vw, 46px); border-radius: 50%; background-color: #ffffff; text-decoration: none;">
+        <img src="assets/logo.webp" alt="" width="52" height="52" style="width: 72%; height: 72%; object-fit: contain;">
+      </a>
+
+      <nav class="nav-pill">
+        <a href="dashboard.html" class="nav-link">Dashboard</a>
+        <a href="index.html" class="nav-link">New Analysis</a>
+        <a href="history.html" class="nav-link">History</a>
+        <a href="help.html" class="nav-link">Help</a>
+      </nav>
+
+      <a href="settings.html" class="sign-in-btn" style="text-decoration: none;">Settings</a>
+
+      <button class="burger-btn" aria-label="Toggle Navigation" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </header>
+
+    <!-- Mobile Menu Overlay & Sheet -->
+    <div class="menu-overlay"></div>
+    <div class="menu-sheet">
+      <nav class="mobile-nav">
+        <a href="dashboard.html" class="mobile-link">Dashboard</a>
+        <a href="index.html" class="mobile-link">New Analysis</a>
+        <a href="history.html" class="mobile-link">History</a>
+        <a href="help.html" class="mobile-link">Help</a>
+        <a href="settings.html" class="mobile-link">Settings</a>
+      </nav>
+    </div>
+
+    <!-- Workspace Container -->
+    <main class="workspace-container">
+      <div class="workspace-title-bar">
+        <div>
+          <h2 style="font-size: clamp(16px, 2.2vw, 22px); font-weight: 600; color: #ffffff;">Mail-Server-Audit.pcap</h2>
+          <div class="analysis-meta-info">Analysis Workspace &bull; Job ID #8320 &bull; Analyzed on Aug 24, 2026</div>
+        </div>
+        <div class="score-badge">
+          <div class="score-circle-sm">82</div>
+          <span style="font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">Risk Score</span>
+        </div>
+      </div>
+
+      <!-- Secondary Navigation Tabs -->
+      <nav class="tabs-bar">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="findings">Findings</button>
+        <button class="tab-btn" data-tab="sessions">Sessions</button>
+        <button class="tab-btn" data-tab="remediation">Remediation</button>
+        <button class="tab-btn" data-tab="report">Report</button>
+      </nav>
+
+      <!-- 1. Overview Tab -->
+      <section class="tab-content active" id="overview-content">
+        <div class="glass-card">
+          <h3 class="drawer-section-title" style="margin-bottom: 12px;">Executive Summary</h3>
+          <p style="font-size: 14px; line-height: 1.6; color: #e4e4e7; margin-bottom: 16px;">
+            The analysis of <strong>Mail-Server-Audit.pcap</strong> has revealed critical cryptographic vulnerabilities and plain-text communications. We identified active usage of deprecated protocol versions (TLS 1.0) and unencrypted SMTP authentication exchanges, which expose credentials directly to interception. Immediate remediation of the mail transfer server configurations is recommended.
+          </p>
+          <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="metric-box">
+              <div class="metric-value">9</div>
+              <div class="metric-label">Total Email Sessions</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-value">4</div>
+              <div class="metric-label">Vulnerabilities Hit</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-value">3</div>
+              <div class="metric-label">Weak TLS Handshakes</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <h3 class="drawer-section-title" style="margin-bottom: 12px;">Security Findings Distribution</h3>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <span class="badge badge-critical" style="padding: 6px 12px;">2 Critical</span>
+            <span class="badge badge-high" style="padding: 6px 12px;">1 High</span>
+            <span class="badge badge-medium" style="padding: 6px 12px;">1 Medium</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Findings Tab -->
+      <section class="tab-content" id="findings-content">
+        <div class="filters-row">
+          <input type="text" class="search-input" id="findings-search" placeholder="Search findings by title, IP, host...">
+          <select class="filter-select" id="findings-severity">
+            <option value="all">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+          </select>
+        </div>
+
+        <div class="data-table-wrapper">
+          <table class="data-table" id="findings-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Severity</th>
+                <th>Finding Title</th>
+                <th>Category</th>
+                <th>Affected Endpoint</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 -->
+              <tr onclick="openFindingDrawer('F-01', 'Plaintext SMTP Authentication Leaked', 'Critical', 'Authentication', '192.168.1.45:25', 'The packet inspection confirmed that the SMTP credentials were exchanged using the unencrypted AUTH PLAIN command during reconstruction of TCP stream #3.', 'AUTH PLAIN credentials leaked in plaintext. Update client and server to enforce STARTTLS before authentication.')">
+                <td>F-01</td>
+                <td><span class="badge badge-critical">Critical</span></td>
+                <td style="font-weight: 500; color: #ffffff;">Plaintext SMTP Authentication Leaked</td>
+                <td>Authentication</td>
+                <td>192.168.1.45:25</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr onclick="openFindingDrawer('F-02', 'Expired TLS Certificate Accepted', 'Critical', 'Certificate', '192.168.1.100:465', 'The server accepted a certificate presented by the endpoint which expired on August 10, 2026. Handshake succeeded regardless.', 'Expired certificate in use. Renew the server TLS certificate immediately.')">
+                <td>F-02</td>
+                <td><span class="badge badge-critical">Critical</span></td>
+                <td style="font-weight: 500; color: #ffffff;">Expired TLS Certificate Accepted</td>
+                <td>Certificate</td>
+                <td>192.168.1.100:465</td>
+              </tr>
+              <!-- Row 3 -->
+              <tr onclick="openFindingDrawer('F-03', 'Deprecated TLS 1.0 Handshake Negotiated', 'High', 'Protocol', '192.168.1.45:993', 'TLS negotiation negotiated protocol TLSv1.0 which is deprecated due to vulnerabilities like POODLE and BEAST.', 'Disable TLS 1.0/1.1 on server config. Enforce minimum TLS 1.2.')">
+                <td>F-03</td>
+                <td><span class="badge badge-high">High</span></td>
+                <td style="font-weight: 500; color: #ffffff;">Deprecated TLS 1.0 Handshake Negotiated</td>
+                <td>Protocol</td>
+                <td>192.168.1.45:993</td>
+              </tr>
+              <!-- Row 4 -->
+              <tr onclick="openFindingDrawer('F-04', 'Weak Cipher Suite (RC4-SHA) In Use', 'Medium', 'Cipher', '192.168.1.45:465', 'Server configuration allows the negotiation of RC4 ciphers which are susceptible to single-byte bias attacks.', 'Remove RC4 ciphers from the server cipher suite configuration list.')">
+                <td>F-04</td>
+                <td><span class="badge badge-medium">Medium</span></td>
+                <td style="font-weight: 500; color: #ffffff;">Weak Cipher Suite (RC4-SHA) In Use</td>
+                <td>Cipher</td>
+                <td>192.168.1.45:465</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 3. Sessions Tab -->
+      <section class="tab-content" id="sessions-content">
+        <div class="filters-row">
+          <input type="text" class="search-input" id="sessions-search" placeholder="Search sessions by IP, host...">
+          <select class="filter-select" id="sessions-status">
+            <option value="all">All Sessions</option>
+            <option value="weak">Weak / Vulnerable</option>
+            <option value="secure">Secure</option>
+          </select>
+        </div>
+
+        <div class="data-table-wrapper">
+          <table class="data-table" id="sessions-table">
+            <thead>
+              <tr>
+                <th>Session ID</th>
+                <th>Source</th>
+                <th>Destination</th>
+                <th>Protocol</th>
+                <th>TLS Version</th>
+                <th>Security Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr onclick="openSessionDrawer('SESS-102', '192.168.1.45:51224', '192.168.1.100:25', 'SMTP', 'Plaintext', 'Weak (F-01)', 'TLS negotiation was bypassed completely, resulting in unencrypted credential exchange.')">
+                <td>SESS-102</td>
+                <td>192.168.1.45:51224</td>
+                <td>192.168.1.100:25</td>
+                <td>SMTP</td>
+                <td>Plaintext</td>
+                <td><span class="badge badge-critical">Weak</span></td>
+              </tr>
+              <tr onclick="openSessionDrawer('SESS-103', '192.168.1.45:51228', '192.168.1.100:993', 'IMAP', 'TLS 1.0', 'Weak (F-03)', 'TLSv1.0 connection negotiated using TLS_RSA_WITH_3DES_EDE_CBC_SHA suite.')">
+                <td>SESS-103</td>
+                <td>192.168.1.45:51228</td>
+                <td>192.168.1.100:993</td>
+                <td>IMAP</td>
+                <td>TLS 1.0</td>
+                <td><span class="badge badge-high">Weak</span></td>
+              </tr>
+              <tr onclick="openSessionDrawer('SESS-104', '192.168.1.45:51230', '192.168.1.100:465', 'SMTPS', 'TLS 1.2', 'Secure', 'Secure TLS 1.2 negotiation using ECDHE-RSA-AES128-GCM-SHA256.')">
+                <td>SESS-104</td>
+                <td>192.168.1.45:51230</td>
+                <td>192.168.1.100:465</td>
+                <td>SMTPS</td>
+                <td>TLS 1.2</td>
+                <td><span class="badge badge-low" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">Secure</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 4. Remediation Tab -->
+      <section class="tab-content" id="remediation-content">
+        <div class="glass-card">
+          <h3 class="drawer-section-title" style="margin-bottom: 12px;">Prioritized Recommendations</h3>
+          
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="border-left: 4px solid #ef4444; padding-left: 16px;">
+              <h4 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 4px;">1. Enforce STARTTLS before AUTH exchanges (SMTP)</h4>
+              <p style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Affects: F-01 &bull; Severity: Critical</p>
+              <p style="font-size: 13px; color: #e4e4e7;">Configure SMTP clients and server `postfix` or `exim` rules to forbid authentication over unencrypted SMTP connections. Update server config to require `STARTTLS` (`smtpd_tls_auth_only = yes`).</p>
+            </div>
+
+            <div style="border-left: 4px solid #ef4444; padding-left: 16px;">
+              <h4 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 4px;">2. Replace Expired TLS Certificates</h4>
+              <p style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Affects: F-02 &bull; Severity: Critical</p>
+              <p style="font-size: 13px; color: #e4e4e7;">Renew certificates bound to SMTP port 465 / 587. Enforce verification in client settings to reject expired certificates.</p>
+            </div>
+
+            <div style="border-left: 4px solid #f97316; padding-left: 16px;">
+              <h4 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 4px;">3. Disable Legacy TLS Versions (TLS 1.0 &amp; 1.1)</h4>
+              <p style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Affects: F-03 &bull; Severity: High</p>
+              <p style="font-size: 13px; color: #e4e4e7;">Enforce TLSv1.2 or TLSv1.3. For Dovecot/IMAP, set `ssl_min_protocol = TLSv1.2` in configuration settings.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Report Tab -->
+      <section class="tab-content" id="report-content">
+        <div class="glass-card">
+          <h3 class="drawer-section-title" style="margin-bottom: 12px;">Security &amp; Forensics Report</h3>
+          <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px;">Generate a complete assessment report from the findings, sessions and cryptographical forensics.</p>
+          
+          <div class="report-preview-box" style="margin-bottom: 20px;">
+            <h1 style="font-size: 18px; font-weight: 600; color: #ffffff; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">SecureMailScope Security Assessment</h1>
+            <p><strong>Target PCAP:</strong> Mail-Server-Audit.pcap</p>
+            <p><strong>Overall Posture score:</strong> 82 / 100 (HIGH RISK)</p>
+            <br>
+            <h2 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 6px;">Executive Summary</h2>
+            <p>During the automated deep packet analysis of Mail-Server-Audit.pcap, we detected severe cryptographic negotiation flaws. The most critical item is the plain-text negotiation of SMTP AUTH credentials over TCP port 25 without prior STARTTLS command negotiation.</p>
+            <br>
+            <h2 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 6px;">Vulnerability Summary</h2>
+            <ul>
+              <li>Critical: 2 (Plaintext AUTH, Expired TLS Certificate)</li>
+              <li>High: 1 (TLS 1.0 negotiate)</li>
+              <li>Medium: 1 (RC4 ciphers enabled)</li>
+            </ul>
+          </div>
+
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button class="btn-action" onclick="alert('JSON Report successfully copied to clipboard!')"><i class="fa-solid fa-code"></i> Export JSON</button>
+            <button class="btn-action btn-secondary" onclick="alert('Generating HTML report for download...')"><i class="fa-solid fa-download"></i> Download HTML</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Details Drawers -->
+    <!-- A. Findings Detail Drawer -->
+    <div class="drawer" id="finding-drawer">
+      <div class="drawer-header">
+        <span class="drawer-title" id="fd-id">Finding Detail</span>
+        <button class="drawer-close" onclick="closeDrawer('finding-drawer')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="drawer-body">
+        <div>
+          <span class="badge badge-critical" id="fd-severity">Critical</span>
+        </div>
+        <div>
+          <h3 style="font-size: 16px; font-weight: 600; color: #ffffff; margin-bottom: 6px;" id="fd-title">Finding Title</h3>
+          <p style="font-size: 12px; color: var(--muted);" id="fd-meta">Category: Authentication</p>
+        </div>
+        <div>
+          <div class="drawer-section-title">What Happened</div>
+          <p style="font-size: 13px; color: #e4e4e7; line-height: 1.5;" id="fd-desc">Description of finding.</p>
+        </div>
+        <div>
+          <div class="drawer-section-title">Evidence (Packet Reconstruct)</div>
+          <div class="code-block" id="fd-evidence">
+C: AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=
+S: 535 5.7.8 Authentication failed
+          </div>
+        </div>
+        <div>
+          <div class="drawer-section-title">Recommendation</div>
+          <p style="font-size: 13px; color: #e4e4e7; line-height: 1.5;" id="fd-reco">Remediation steps.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- B. Sessions Detail Drawer -->
+    <div class="drawer" id="session-drawer">
+      <div class="drawer-header">
+        <span class="drawer-title" id="sd-id">Session Detail</span>
+        <button class="drawer-close" onclick="closeDrawer('session-drawer')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="drawer-body">
+        <div>
+          <h3 style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 4px;" id="sd-endpoints">192.168.1.45:51224 -> 192.168.1.100:25</h3>
+          <p style="font-size: 12px; color: var(--muted);" id="sd-protocol">Protocol: SMTP</p>
+        </div>
+
+        <div class="sub-tabs">
+          <button class="sub-tab-btn active" onclick="switchSubTab(this, 'sd-info-content')">Info</button>
+          <button class="sub-tab-btn" onclick="switchSubTab(this, 'sd-tls-content')">TLS</button>
+          <button class="sub-tab-btn" onclick="switchSubTab(this, 'sd-cert-content')">Cert</button>
+        </div>
+
+        <!-- Sub tab: Info -->
+        <div class="sub-tab-content active" id="sd-info-content">
+          <div class="drawer-section-title">Session Assessment</div>
+          <p style="font-size: 13px; color: #e4e4e7; line-height: 1.5;" id="sd-assess">Assessment details.</p>
+        </div>
+
+        <!-- Sub tab: TLS -->
+        <div class="sub-tab-content" id="sd-tls-content">
+          <div class="drawer-section-title">TLS Handshake</div>
+          <div class="code-block" id="sd-tls-info">
+TLS Protocol Version: Plaintext
+Cipher Suite: None
+Handshake Success: N/A
+          </div>
+        </div>
+
+        <!-- Sub tab: Cert -->
+        <div class="sub-tab-content" id="sd-cert-content">
+          <div class="drawer-section-title">Certificate Information</div>
+          <div class="code-block" id="sd-cert-info">
+No certificate found in Plaintext stream.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Footer -->
+    <footer class="stats-footer">
+      <div class="stat-col" style="--d: 0.5s;">
+        <span class="stat-icon">&lt;</span>
+        <span class="stat-value" data-target="120" data-decimals="0">0</span>
+        <span class="stat-label">Inference Time</span>
+      </div>
+      <div class="stat-col" style="--d: 0.58s;">
+        <span class="stat-icon">%</span>
+        <span class="stat-value" data-target="99.99" data-decimals="2">0.00</span>
+        <span class="stat-label">Platform Uptime</span>
+      </div>
+      <div class="stat-col" style="--d: 0.66s;">
+        <span class="stat-icon">*</span>
+        <span class="stat-value" data-target="24" data-decimals="0">0</span>
+        <span class="stat-label">Autonomous Runtime</span>
+      </div>
+      <div class="stat-col" style="--d: 0.74s;">
+        <span class="stat-icon">#</span>
+        <span class="stat-value" data-target="2.4" data-decimals="1">0.0</span>
+        <span class="stat-label">Context Windows</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="main.js"></script>
+  <script>
+    // Workspace-specific Tab Switcher
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const targetTab = btn.getAttribute("data-tab");
+
+        tabButtons.forEach(b => b.classList.remove("active"));
+        tabContents.forEach(c => c.classList.remove("active"));
+
+        btn.classList.add("active");
+        document.getElementById(`${targetTab}-content`).classList.add("active");
+      });
+    });
+
+    // Helper functions for drawers
+    function openFindingDrawer(id, title, severity, category, endpoint, desc, reco) {
+      document.getElementById("fd-id").textContent = id + " - " + title;
+      document.getElementById("fd-title").textContent = title;
+      document.getElementById("fd-meta").textContent = `Category: ${category} | Affected: ${endpoint}`;
+      document.getElementById("fd-desc").textContent = desc;
+      document.getElementById("fd-reco").textContent = reco;
+
+      const sevBadge = document.getElementById("fd-severity");
+      sevBadge.textContent = severity;
+      sevBadge.className = `badge badge-${severity.toLowerCase()}`;
+
+      // Custom evidence text based on finding ID
+      const ev = document.getElementById("fd-evidence");
+      if (id === 'F-01') {
+        ev.textContent = "C: AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=\nS: 535 5.7.8 Authentication failed";
+      } else if (id === 'F-02') {
+        ev.textContent = "Validity Period:\n  Not Before: Aug 10, 2024\n  Not After : Aug 10, 2026\nCurrent Time: Aug 24, 2026";
+      } else if (id === 'F-03') {
+        ev.textContent = "Client Hello:\n  Version: TLS 1.0 (0x0301)\nServer Hello:\n  Version: TLS 1.0 (0x0301)";
+      } else {
+        ev.textContent = "Cipher negotiated: TLS_RSA_WITH_RC4_128_SHA (deprecated)";
+      }
+
+      document.getElementById("finding-drawer").classList.add("open");
+      document.getElementById("session-drawer").classList.remove("open");
+    }
+
+    function openSessionDrawer(id, src, dst, protocol, tlsVer, security, assess) {
+      document.getElementById("sd-id").textContent = id + " Details";
+      document.getElementById("sd-endpoints").textContent = `${src} -> ${dst}`;
+      document.getElementById("sd-protocol").textContent = `Protocol: ${protocol} | TLS Version: ${tlsVer}`;
+      document.getElementById("sd-assess").textContent = assess;
+
+      const tlsInfo = document.getElementById("sd-tls-info");
+      const certInfo = document.getElementById("sd-cert-info");
+
+      if (tlsVer === 'Plaintext') {
+        tlsInfo.textContent = "TLS Protocol Version: Plaintext\nCipher Suite: None\nHandshake Success: N/A";
+        certInfo.textContent = "No certificate found in Plaintext stream.";
+      } else if (tlsVer === 'TLS 1.0') {
+        tlsInfo.textContent = "TLS Protocol Version: TLS 1.0 (Deprecated)\nCipher Suite: TLS_RSA_WITH_3DES_EDE_CBC_SHA\nHandshake: Completed (Weak)";
+        certInfo.textContent = "Subject: CN=mail.securemailscope.com\nIssuer: CN=SecureMailScope Local CA\nValidity: Aug 2024 - Aug 2027\nKey Size: RSA 2048-bit";
+      } else {
+        tlsInfo.textContent = "TLS Protocol Version: TLS 1.2\nCipher Suite: ECDHE-RSA-AES128-GCM-SHA256\nHandshake: Completed (Secure)";
+        certInfo.textContent = "Subject: CN=smtp.gmail.com\nIssuer: CN=Google Trust Services\nValidity: Jul 2026 - Oct 2026\nKey Size: EC 256-bit";
+      }
+
+      document.getElementById("session-drawer").classList.add("open");
+      document.getElementById("finding-drawer").classList.remove("open");
+    }
+
+    function closeDrawer(id) {
+      document.getElementById(id).classList.remove("open");
+    }
+
+    function switchSubTab(btn, contentId) {
+      const parent = btn.closest(".drawer-body");
+      parent.querySelectorAll(".sub-tab-btn").forEach(b => b.classList.remove("active"));
+      parent.querySelectorAll(".sub-tab-content").forEach(c => c.classList.remove("active"));
+
+      btn.classList.add("active");
+      document.getElementById(contentId).classList.add("active");
+    }
+
+    // Direct redirection logic if query param specifies tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialTab = urlParams.get('tab');
+    if (initialTab) {
+      const targetBtn = document.querySelector(`.tab-btn[data-tab="${initialTab}"]`);
+      if (targetBtn) targetBtn.click();
+    }
+  </script>
+</body>
+</html>
