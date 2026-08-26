@@ -1,9 +1,48 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import './Dashboard.css';
+import { getAnalysis } from '../utils/api';
+import { DashboardCharts } from '../components/DashboardCharts';
 
 export function Dashboard() {
+  const [searchParams] = useSearchParams();
+  const jobId = searchParams.get('job') || '8320';
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [metrics, setMetrics] = useState({ totalSize: "0 MB", sessions: 0, tlsSessions: 0, plaintextEmails: 0, riskScore: 0, riskLevel: 'UNKNOWN' });
+
+  useEffect(() => {
+    if (!jobId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    getAnalysis(jobId)
+      .then((data) => {
+        const summary = data.summary || {};
+        setMetrics({
+          totalSize: summary.totalSize || "0 MB",
+          sessions: summary.sessions || 0,
+          tlsSessions: summary.tlsSessions || 0,
+          plaintextEmails: summary.plaintextEmails || 0,
+          riskScore: summary.riskScore || 0,
+          riskLevel: summary.riskLevel || 'UNKNOWN',
+        });
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setError('Failed to load dashboard data');
+        setLoading(false);
+      });
+  }, [jobId]);
+
+  if (loading) return <div className="dashboard-loading" style={{ color: '#fff' }}>Loading dashboard...</div>;
+  if (error) return <div className="dashboard-error" style={{ color: 'red' }}>{error}</div>;
+
   return (
-    <main className="dashboard-container">
+      <main className="dashboard-container">
+      <h1 style={{ color: '#fff' }}>Dashboard</h1>
       {/* Left / Main Panel */}
       <section className="main-panel">
         {/* Security Posture Card */}
@@ -14,11 +53,11 @@ export function Dashboard() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="score-circle-wrapper">
               <div className="score-circle">
-                <span className="score-number">82</span>
+                <span className="score-number">{metrics.riskScore}</span>
                 <span className="score-max">/100</span>
               </div>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>HIGH RISK</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: 600, color: metrics.riskLevel === 'HIGH' ? '#ef4444' : '#10b981', marginBottom: '4px' }}>{metrics.riskLevel} RISK</h3>
                 <p style={{ fontSize: '12px', color: 'var(--muted)', maxWidth: '280px' }}>
                   Critical cryptographic and plaintext mail traffic violations identified.
                 </p>
@@ -33,6 +72,7 @@ export function Dashboard() {
         </div>
 
         {/* Recent Analyses */}
+        <DashboardCharts jobId={jobId} />
         <div className="glass-card">
           <div className="card-title">
             <i className="fa-solid fa-clock-rotate-left"></i> Recent Analyses
@@ -47,7 +87,7 @@ export function Dashboard() {
                   <span>9 Sessions</span>
                 </div>
               </div>
-              <Link to="/analysis?id=8320" className="btn-small">View</Link>
+              <Link to="/analysis?job=8320" className="btn-small">View</Link>
             </div>
             <div className="analysis-row">
               <div className="analysis-info">
@@ -58,7 +98,7 @@ export function Dashboard() {
                   <span>34 Sessions</span>
                 </div>
               </div>
-              <Link to="/analysis?id=8318" className="btn-small">View</Link>
+              <Link to="/analysis?job=8318" className="btn-small">View</Link>
             </div>
           </div>
         </div>
@@ -66,32 +106,32 @@ export function Dashboard() {
 
       {/* Right / Side Panel */}
       <section className="side-panel">
-        {/* Capture Summary */}
-        <div className="glass-card">
-          <div className="card-title">
-            <i className="fa-solid fa-file-invoice"></i> Capture Summary
+          {/* Capture Summary */}
+          <div className="glass-card">
+            <div className="card-title">
+              <i className="fa-solid fa-file-invoice"></i> Capture Summary
+            </div>
+            <div className="metrics-grid">
+              <div className="metric-box">
+                <div className="metric-value">{metrics.totalSize} <span style={{ fontSize: '14px' }}>MB</span></div>
+                <div className="metric-label">Total Size</div>
+              </div>
+              <div className="metric-box">
+                <div className="metric-value">{metrics.sessions}</div>
+                <div className="metric-label">Sessions</div>
+              </div>
+              <div className="metric-box">
+                <div className="metric-value">{metrics.tlsSessions}</div>
+                <div className="metric-label">TLS Sessions</div>
+              </div>
+              <div className="metric-box">
+                <div className="metric-value">{metrics.plaintextEmails}</div>
+                <div className="metric-label">Plaintext Emails</div>
+              </div>
+            </div>
           </div>
-          <div className="metrics-grid">
-            <div className="metric-box">
-              <div className="metric-value">45.2 <span style={{ fontSize: '14px' }}>MB</span></div>
-              <div className="metric-label">Total Size</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">918</div>
-              <div className="metric-label">Sessions</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">124</div>
-              <div className="metric-label">TLS Sessions</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">3</div>
-              <div className="metric-label">Plaintext Emails</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Quick Actions */}
+          {/* Quick Actions */}
         <div className="glass-card">
           <div className="card-title">
             <i className="fa-solid fa-bolt"></i> Quick Actions
@@ -101,11 +141,11 @@ export function Dashboard() {
               <i className="fa-solid fa-upload"></i>
               <span>New Analysis</span>
             </Link>
-            <Link to="/analysis?id=8320&tab=findings" className="btn-action">
+            <Link to="/analysis?job=8320&tab=findings" className="btn-action">
               <i className="fa-solid fa-triangle-exclamation"></i>
               <span>View Findings</span>
             </Link>
-            <Link to="/analysis?id=8320&tab=sessions" className="btn-action">
+            <Link to="/analysis?job=8320&tab=sessions" className="btn-action">
               <i className="fa-solid fa-network-wired"></i>
               <span>Explore Sessions</span>
             </Link>

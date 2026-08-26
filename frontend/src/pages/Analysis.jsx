@@ -1,88 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import { getAnalysis, pollAnalysis } from '../utils/api';
 
-const FINDINGS_DATA = [
-  {
-    id: 'F-01',
-    severity: 'critical',
-    severityLabel: 'Critical',
-    title: 'Plaintext SMTP Authentication Leaked',
-    category: 'Authentication',
-    endpoint: '192.168.1.45:25',
-    desc: 'The packet inspection confirmed that the SMTP credentials were exchanged using the unencrypted AUTH PLAIN command during reconstruction of TCP stream #3.',
-    reco: 'AUTH PLAIN credentials leaked in plaintext. Update client and server to enforce STARTTLS before authentication.',
-    evidence: 'C: AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=\nS: 535 5.7.8 Authentication failed',
-  },
-  {
-    id: 'F-02',
-    severity: 'critical',
-    severityLabel: 'Critical',
-    title: 'Expired TLS Certificate Accepted',
-    category: 'Certificate',
-    endpoint: '192.168.1.100:465',
-    desc: 'The server accepted a certificate presented by the endpoint which expired on August 10, 2026. Handshake succeeded regardless.',
-    reco: 'Expired certificate in use. Renew the server TLS certificate immediately.',
-    evidence: 'Validity Period:\n  Not Before: Aug 10, 2024\n  Not After : Aug 10, 2026\nCurrent Time: Aug 24, 2026',
-  },
-  {
-    id: 'F-03',
-    severity: 'high',
-    severityLabel: 'High',
-    title: 'Deprecated TLS 1.0 Handshake Negotiated',
-    category: 'Protocol',
-    endpoint: '192.168.1.45:993',
-    desc: 'TLS negotiation negotiated protocol TLSv1.0 which is deprecated due to vulnerabilities like POODLE and BEAST.',
-    reco: 'Disable TLS 1.0/1.1 on server config. Enforce minimum TLS 1.2.',
-    evidence: 'Client Hello:\n  Version: TLS 1.0 (0x0301)\nServer Hello:\n  Version: TLS 1.0 (0x0301)',
-  },
-  {
-    id: 'F-04',
-    severity: 'medium',
-    severityLabel: 'Medium',
-    title: 'Weak Cipher Suite (RC4-SHA) In Use',
-    category: 'Cipher',
-    endpoint: '192.168.1.45:465',
-    desc: 'Server configuration allows the negotiation of RC4 ciphers which are susceptible to single-byte bias attacks.',
-    reco: 'Remove RC4 ciphers from the server cipher suite configuration list.',
-    evidence: 'Cipher negotiated: TLS_RSA_WITH_RC4_128_SHA (deprecated)',
-  },
-];
+// Mock data removed; real data will be fetched via API (getAnalysis/pollAnalysis).
+// The component will use analysisData.findings and analysisData.sessions.
 
-const SESSIONS_DATA = [
-  {
-    id: 'SESS-102',
-    src: '192.168.1.45:51224',
-    dst: '192.168.1.100:25',
-    protocol: 'SMTP',
-    tlsVer: 'Plaintext',
-    security: 'Weak (F-01)',
-    statusClass: 'badge-critical',
-    statusLabel: 'Weak',
-    assess: 'TLS negotiation was bypassed completely, resulting in unencrypted credential exchange.',
-  },
-  {
-    id: 'SESS-103',
-    src: '192.168.1.45:51228',
-    dst: '192.168.1.100:993',
-    protocol: 'IMAP',
-    tlsVer: 'TLS 1.0',
-    security: 'Weak (F-03)',
-    statusClass: 'badge-high',
-    statusLabel: 'Weak',
-    assess: 'TLSv1.0 connection negotiated using TLS_RSA_WITH_3DES_EDE_CBC_SHA suite.',
-  },
-  {
-    id: 'SESS-104',
-    src: '192.168.1.45:51230',
-    dst: '192.168.1.100:465',
-    protocol: 'SMTPS',
-    tlsVer: 'TLS 1.2',
-    security: 'Secure',
-    statusClass: '',
-    statusLabel: 'Secure',
-    assess: 'Secure TLS 1.2 negotiation using ECDHE-RSA-AES128-GCM-SHA256.',
-  },
-];
 
 function getSessionTlsInfo(tlsVer) {
   if (tlsVer === 'Plaintext') {
@@ -105,12 +27,16 @@ function getSessionTlsInfo(tlsVer) {
 
 export function Analysis() {
   const [searchParams] = useSearchParams();
+  const jobId = searchParams.get('job');
   const tabParam = searchParams.get('tab');
 
   const [activeTab, setActiveTab] = useState(tabParam || 'overview');
   const [selectedFinding, setSelectedFinding] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionSubTab, setSessionSubTab] = useState('info');
+  const [analysisData, setAnalysisData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Search / filter state
   const [findingsSearch, setFindingsSearch] = useState('');
@@ -123,14 +49,32 @@ export function Analysis() {
     if (tabParam) setActiveTab(tabParam);
   }, [tabParam]);
 
-  const filteredFindings = FINDINGS_DATA.filter((f) => {
+  // Fetch analysis data when jobId is present
+  useEffect(() => {
+    if (!jobId) return;
+    setLoading(true);
+    getAnalysis(jobId)
+      .then((data) => {
+        setAnalysisData(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setError('Failed to load analysis data');
+        setLoading(false);
+      });
+  }, [jobId]);
+
+  const findings = analysisData?.findings || [];
+  const filteredFindings = findings.filter((f) => {
     const matchSev = findingsSeverity === 'all' || f.severity === findingsSeverity;
     const q = findingsSearch.toLowerCase();
     const matchQ = !q || f.title.toLowerCase().includes(q) || f.endpoint.toLowerCase().includes(q) || f.category.toLowerCase().includes(q);
     return matchSev && matchQ;
   });
 
-  const filteredSessions = SESSIONS_DATA.filter((s) => {
+  const sessions = analysisData?.sessions || [];
+  const filteredSessions = sessions.filter((s) => {
     const matchStatus = sessionsStatus === 'all' ||
       (sessionsStatus === 'weak' && s.statusLabel === 'Weak') ||
       (sessionsStatus === 'secure' && s.statusLabel === 'Secure');
@@ -155,20 +99,27 @@ export function Analysis() {
     setSelectedSession(null);
   };
 
+  if (loading) {
+    return <div className="workspace-container"><p style={{ color: '#fff' }}>Loading analysis...</p></div>;
+  }
+  if (error) {
+    return <div className="workspace-container"><p style={{ color: 'red' }}>{error}</p></div>;
+  }
+  const { summary = {} } = analysisData || {};
   return (
     <main className="workspace-container">
       {/* Title Bar */}
       <div className="workspace-title-bar">
         <div>
           <h2 style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', fontWeight: 600, color: '#ffffff' }}>
-            Mail-Server-Audit.pcap
+            {summary.jobId ? `Job ${summary.jobId}` : 'Analysis'}
           </h2>
           <div className="analysis-meta-info">
-            Analysis Workspace &bull; Job ID #8320 &bull; Analyzed on Aug 24, 2026
+            Analysis Workspace &bull; Job ID {jobId || '--'} &bull; Risk Score {summary.riskScore || '--'}
           </div>
         </div>
         <div className="score-badge">
-          <div className="score-circle-sm">82</div>
+          <div className="score-circle-sm">{summary.riskScore || '--'}</div>
           <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>
             Risk Score
           </span>
@@ -195,12 +146,12 @@ export function Analysis() {
           <div className="glass-card">
             <h3 className="drawer-section-title" style={{ marginBottom: '12px' }}>Executive Summary</h3>
             <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#e4e4e7', marginBottom: '16px' }}>
-              The analysis of <strong>Mail-Server-Audit.pcap</strong> has revealed critical cryptographic vulnerabilities and plain-text communications. We identified active usage of deprecated protocol versions (TLS 1.0) and unencrypted SMTP authentication exchanges, which expose credentials directly to interception. Immediate remediation of the mail transfer server configurations is recommended.
+              {summary.description || 'No description available.'}
             </p>
             <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              <div className="metric-box"><div className="metric-value">9</div><div className="metric-label">Total Email Sessions</div></div>
-              <div className="metric-box"><div className="metric-value">4</div><div className="metric-label">Vulnerabilities Hit</div></div>
-              <div className="metric-box"><div className="metric-value">3</div><div className="metric-label">Weak TLS Handshakes</div></div>
+              <div className="metric-box"><div className="metric-value">{summary.emailPackets || '--'}</div><div className="metric-label">Email Packets</div></div>
+              <div className="metric-box"><div className="metric-value">{summary.findingsCount || '--'}</div><div className="metric-label">Findings</div></div>
+              <div className="metric-box"><div className="metric-value">{summary.sessions || '--'}</div><div className="metric-label">Sessions</div></div>
             </div>
           </div>
           <div className="glass-card">

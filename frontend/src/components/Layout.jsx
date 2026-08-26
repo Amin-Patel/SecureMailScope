@@ -8,7 +8,7 @@ const VIDEO_SRC =
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/', label: 'New Analysis' },
-  { to: '/history', label: 'History' },
+  { to: '/history', label: 'Analyses' },
   { to: '/help', label: 'Help' },
 ];
 

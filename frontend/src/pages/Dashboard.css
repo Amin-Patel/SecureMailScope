@@ -1,0 +1,72 @@
+/* Dashboard page styles */
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2rem;
+  padding: clamp(16px, 3vw, 32px);
+  min-height: 100vh;
+  color: var(--text);
+  position: relative;
+  z-index: 5;
+}
+
+.main-panel {
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
+}
+
+.side-panel {
+  width: 100%;
+  max-width: 350px;
+}
+
+.glass-card {
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px,5vw,28px);
+  margin-bottom: 0.5rem;
+}
+
+.action-stack .btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.action-stack .btn-action:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* Ensure chart canvases fill their container */
+.chart-card {
+  min-height: 350px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.1);
+}canvas {
+  width: 100% !important;
+  height: 250px !important;
+  display: block;
+  background-color: transparent;
+}

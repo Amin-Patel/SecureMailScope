@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PcapUpload } from '../components/upload/PcapUpload';
+import HowItWorks from '../components/HowItWorks';
+import { uploadPcap } from '../utils/api';
 
 export function NewAnalysis() {
   const navigate = useNavigate();
@@ -28,53 +30,40 @@ export function NewAnalysis() {
   }, []);
 
   return (
-    <main className="hero">
-      {/* Trust Row */}
-      <div className="trust-row anim" style={{ '--d': '0.05s' }}>
-        <div className="trust-avatars">
-          <div className="trust-avatar avatar-microsoft">
-            <div className="inner-circle">
-              <i className="fa-brands fa-microsoft"></i>
-            </div>
-          </div>
-          <div className="trust-avatar avatar-amazon">
-            <div className="inner-circle">
-              <i className="fa-brands fa-amazon"></i>
-            </div>
-          </div>
-          <div className="trust-avatar avatar-google">
-            <div className="inner-circle">
-              <i className="fa-brands fa-google"></i>
-            </div>
-          </div>
+    <>
+      <main className="hero">
+        {/* Product Name */}
+        <h2 className="product-name" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px,5vw,48px)', color: '#ffffff', marginBottom: '0.5rem' }}>SecureMailScope</h2>
+
+        {/* Headline */}
+        <h1 className="headline" style={{ fontSize: 'clamp(28px,5vw,64px)', marginBottom: '0.5rem' }}>See the Security Hidden in Your Email Traffic.</h1>
+
+        {/* Subhead */}
+        <p className="subhead anim" style={{ '--d': '0.28s', fontSize: 'clamp(14px,1.6vw,16px)', marginBottom: '1rem' }}>
+          Analyze PCAP captures to uncover TLS, certificate, and cryptographic weaknesses with clear findings, evidence, and actionable remediation.
+        </p>
+
+        {/* CTA Buttons */}
+        <div className="cta-group" style={{ display: 'flex', gap: '12px', marginBottom: '1.5rem' }}>
+          <button className="cta-btn" onClick={() => navigate('/analysis?job=8320')}>Start Analysis</button>
+          <button className="cta-btn secondary-cta" onClick={() => document.getElementById('how-it-works').scrollIntoView({ behavior: 'smooth' })}>See How It Works</button>
         </div>
-        <div className="trust-pill">Trusted by 2000+ Enterprises</div>
-      </div>
 
-      {/* Headline */}
-      <h1 className="headline">
-        <span className="line-1">Intelligence</span>
-        <span className="line-2">Designed To Evolve</span>
-      </h1>
-
-      {/* Subhead */}
-      <p className="subhead anim" style={{ '--d': '0.28s' }}>
-        Build applications that reason, adapt and collaborate using a modular AI platform designed
-        for production.
-      </p>
-
-      {/* PCAP Upload */}
-      <div
-        id="pcap-upload-container"
-        className="anim"
-        style={{ '--d': '0.4s', width: '100%', maxWidth: '480px', margin: '0 auto' }}
-      >
-        <PcapUpload
-          onAnalysisStart={(file) => {
-            navigate(`/analysis?id=8320&file=${encodeURIComponent(file.name)}`);
-          }}
-        />
-      </div>
-    </main>
+        {/* PCAP Upload */}
+        <div id="pcap-upload-container" className="anim" style={{ '--d': '0.4s', width: '100%', maxWidth: '480px', margin: '0 auto' }}>
+          <PcapUpload onAnalysisStart={async (file) => {
+            try {
+              const jobId = await uploadPcap(file);
+              navigate(`/analysis?job=${jobId}`);
+            } catch (err) {
+              console.error('Upload failed', err);
+            }
+          }} />
+        </div>
+      </main>
+      <section id="how-it-works" className="how-it-works-section">
+        <HowItWorks />
+      </section>
+    </>
   );
 }

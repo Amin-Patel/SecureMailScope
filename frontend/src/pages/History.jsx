@@ -32,8 +32,8 @@ export function History() {
                 {entry.score}
               </div>
               <div className="btn-group">
-                <Link to={`/analysis?id=${entry.id}`} className="btn-action">Open Workspace</Link>
-                <Link to={`/analysis?id=${entry.id}&tab=report`} className="btn-action btn-secondary">Report</Link>
+                <Link to={`/analysis?job=${entry.id}`} className="btn-action">Open Workspace</Link>
+                <Link to={`/analysis?job=${entry.id}&tab=report`} className="btn-action btn-secondary">Report</Link>
               </div>
             </div>
           </div>
