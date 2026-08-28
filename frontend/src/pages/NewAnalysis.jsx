@@ -33,7 +33,7 @@ export function NewAnalysis() {
     <>
       <main className="hero">
         {/* Page Title */}
-        <h2 className="product-name" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px,5vw,48px)', color: '#ffffff', marginBottom: '0.5rem' }}>Workspace</h2>
+        <h2 className="product-name" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px,5vw,48px)', color: '#ffffff', marginBottom: '0.5rem' }}>SecureMailScope</h2>
 
         {/* Subhead */}
         <p className="subhead anim" style={{ '--d': '0.28s', fontSize: 'clamp(14px,1.6vw,16px)', marginBottom: '1rem' }}>
