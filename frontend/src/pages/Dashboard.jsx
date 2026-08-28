@@ -42,7 +42,17 @@ export function Dashboard() {
 
   return (
       <main className="dashboard-container">
-      <h1 style={{ color: '#fff' }}>Dashboard</h1>
+      <h1 style={{
+        background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        fontSize: 'clamp(24px, 3vw, 36px)',
+        fontWeight: 800,
+        letterSpacing: '-0.03em',
+        marginBottom: '4px',
+      }}>Dashboard</h1>
+      <div className="dashboard-body">
       {/* Left / Main Panel */}
       <section className="main-panel">
         {/* Security Posture Card */}
@@ -52,16 +62,36 @@ export function Dashboard() {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="score-circle-wrapper">
-              <div className="score-circle">
-                <span className="score-number">{metrics.riskScore}</span>
-                <span className="score-max">/100</span>
-              </div>
-              <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, color: metrics.riskLevel === 'HIGH' ? '#ef4444' : '#10b981', marginBottom: '4px' }}>{metrics.riskLevel} RISK</h3>
-                <p style={{ fontSize: '12px', color: 'var(--muted)', maxWidth: '280px' }}>
-                  Critical cryptographic and plaintext mail traffic violations identified.
-                </p>
-              </div>
+              {/* Dynamic conic-gradient: arc = (score/100)*360deg */}
+              {(() => {
+                const score = metrics.riskScore || 0;
+                const deg = Math.round((score / 100) * 360);
+                const riskColor = score >= 75 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#10b981';
+                const riskLabel = score >= 75 ? 'HIGH' : score >= 40 ? 'MEDIUM' : 'LOW';
+                return (
+                  <>
+                    <div className="score-circle" style={{
+                      background: `conic-gradient(${riskColor} 0deg ${deg}deg, rgba(255,255,255,0.08) ${deg}deg)`,
+                      boxShadow: `0 0 24px rgba(${riskColor === '#ef4444' ? '239,68,68' : riskColor === '#f59e0b' ? '245,158,11' : '16,185,129'},0.4)`,
+                    }}>
+                      <span className="score-number">{score}</span>
+                      <span className="score-max">/100</span>
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: riskColor, marginBottom: '4px', textShadow: `0 0 16px ${riskColor}99` }}>
+                        {riskLabel} RISK
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--muted)', maxWidth: '280px' }}>
+                        {score >= 75
+                          ? 'Critical cryptographic and plaintext mail traffic violations identified.'
+                          : score >= 40
+                          ? 'Moderate security issues detected. Review findings and remediate.'
+                          : 'No critical issues detected. Mail security posture is healthy.'}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <span className="badge badge-critical">2 Critical</span>
@@ -152,6 +182,8 @@ export function Dashboard() {
           </div>
         </div>
       </section>
+      </div>
     </main>
+
   );
 }

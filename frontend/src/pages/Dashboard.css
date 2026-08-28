@@ -10,63 +10,296 @@
   color: var(--text);
   position: relative;
   z-index: 5;
+  width: 100%;
+}
+
+/* Two-column layout on wider screens */
+.dashboard-body {
+  display: flex;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1200px;
+  align-items: flex-start;
 }
 
 .main-panel {
   flex: 1;
-  max-width: 900px;
-  width: 100%;
+  min-width: 0;
 }
 
 .side-panel {
-  width: 100%;
-  max-width: 350px;
+  width: 320px;
+  flex-shrink: 0;
 }
 
+@media (max-width: 900px) {
+  .dashboard-body {
+    flex-direction: column;
+  }
+  .side-panel {
+    width: 100%;
+  }
+}
+
+/* Glass card — higher opacity + blur for text contrast */
 .glass-card {
-  background: rgba(255,255,255,0.08);
-  border-radius: 12px;
+  background: rgba(10, 10, 15, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
   padding: 1.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   color: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 .card-title {
   font-family: var(--font-display);
-  font-size: clamp(20px,5vw,28px);
-  margin-bottom: 0.5rem;
+  font-size: clamp(16px, 3vw, 20px);
+  margin-bottom: 1rem;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.01em;
+}
+
+.card-title i {
+  opacity: 0.8;
+}
+
+/* Metric boxes */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metric-box {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+}
+
+.metric-value {
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(59,130,246,0.5);
+  letter-spacing: -0.02em;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Score circle */
+.score-circle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.score-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: conic-gradient(#ef4444 0deg 270deg, rgba(255,255,255,0.1) 270deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 0 20px rgba(239,68,68,0.35);
+  flex-shrink: 0;
+}
+
+.score-number {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.score-max {
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-critical {
+  background: rgba(239,68,68,0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.3);
+}
+
+.badge-high {
+  background: rgba(249,115,22,0.2);
+  color: #f97316;
+  border: 1px solid rgba(249,115,22,0.3);
+}
+
+/* Analyses list */
+.analyses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysis-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: background 0.2s ease;
+}
+
+.analysis-row:hover {
+  background: rgba(255,255,255,0.09);
+}
+
+.analysis-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analysis-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.analysis-meta {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+}
+
+.btn-small {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(59,130,246,0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59,130,246,0.3);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.btn-small:hover {
+  background: rgba(59,130,246,0.35);
+  transform: translateY(-1px);
+}
+
+/* Quick actions */
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .action-stack .btn-action {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.12);
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.09);
   color: #fff;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 14px;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .action-stack .btn-action:hover {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.14);
+  transform: translateX(3px);
 }
 
-/* Ensure chart canvases fill their container */
+.action-stack .btn-action i {
+  width: 16px;
+  text-align: center;
+  opacity: 0.75;
+}
+
+/* ──────────────────────────────────────────────
+   Chart section — dynamic, visually rich
+   ────────────────────────────────────────────── */
+.dashboard-charts-container {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-bottom: 1.25rem;
+}
+
 .chart-card {
-  min-height: 350px;
-  width: 100%;
+  background: rgba(10, 10, 15, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  border: 1px solid rgba(255,255,255,0.1);
-}canvas {
-  width: 100% !important;
-  height: 250px !important;
-  display: block;
-  background-color: transparent;
+  gap: 12px;
+  /* No fixed height — let content dictate size */
+  position: relative;
+  overflow: hidden;
 }
+
+/* Subtle glowing accent top border */
+.chart-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.6), transparent);
+  border-radius: 999px;
+}
+
+.chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+/* The chart canvas wrapper — gives Chart.js room to breathe */
+.chart-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  /* Let Chart.js control height via aspect ratio */
+}
+

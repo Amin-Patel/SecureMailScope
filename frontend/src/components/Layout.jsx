@@ -13,10 +13,10 @@ const NAV_LINKS = [
 ];
 
 const STATS = [
-  { icon: '<', target: 120, decimals: 0, label: 'Inference Time' },
-  { icon: '%', target: 99.99, decimals: 2, label: 'Platform Uptime' },
-  { icon: '*', target: 24, decimals: 0, label: 'Autonomous Runtime' },
-  { icon: '#', target: 2.4, decimals: 1, label: 'Context Windows' },
+  { icon: 'fa-bolt',          value: '<120ms',  label: 'Inference Time' },
+  { icon: 'fa-shield-check',  value: '99.99%',  label: 'Platform Uptime' },
+  { icon: 'fa-clock',         value: '24/7',    label: 'Runtime' },
+  { icon: 'fa-layer-group',   value: '2.4B',    label: 'Ctx Windows' },
 ];
 
 export function Layout({ children }) {
@@ -76,6 +76,8 @@ export function Layout({ children }) {
         <video className="bg-video" autoPlay muted loop playsInline>
           <source src={VIDEO_SRC} type="video/mp4" />
         </video>
+        {/* Persistent dark overlay — ensures text readability on all pages regardless of video frame */}
+        <div className="bg-overlay" />
       </div>
 
       <div className="page">
@@ -168,21 +170,17 @@ export function Layout({ children }) {
 
         {/* Stats Footer */}
         <footer className="stats-footer" ref={footerRef}>
-          {STATS.map(({ icon, target, decimals, label }, i) => (
+          {STATS.map(({ icon, value, label }, i) => (
             <div
               className="stat-col"
               key={label}
               style={{ '--d': `${0.5 + i * 0.08}s` }}
             >
-              <span className="stat-icon">{icon}</span>
-              <span
-                className="stat-value"
-                data-target={target}
-                data-decimals={decimals}
-              >
-                {decimals === 0 ? '0' : '0.00'}
-              </span>
-              <span className="stat-label">{label}</span>
+              <i className={`fa-solid ${icon} stat-icon`} style={{ fontSize: 'clamp(14px,1.8vw,18px)', color: 'rgba(255,255,255,0.6)' }}></i>
+              <div>
+                <span className="stat-value">{value}</span>
+                <span className="stat-label" style={{ display: 'block' }}>{label}</span>
+              </div>
             </div>
           ))}
         </footer>
