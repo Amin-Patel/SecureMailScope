@@ -32,20 +32,17 @@ export function NewAnalysis() {
   return (
     <>
       <main className="hero">
-        {/* Product Name */}
-        <h2 className="product-name" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px,5vw,48px)', color: '#ffffff', marginBottom: '0.5rem' }}>SecureMailScope</h2>
-
-        {/* Headline */}
-        <h1 className="headline" style={{ fontSize: 'clamp(28px,5vw,64px)', marginBottom: '0.5rem' }}>See the Security Hidden in Your Email Traffic.</h1>
+        {/* Page Title */}
+        <h2 className="product-name" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px,5vw,48px)', color: '#ffffff', marginBottom: '0.5rem' }}>Workspace</h2>
 
         {/* Subhead */}
         <p className="subhead anim" style={{ '--d': '0.28s', fontSize: 'clamp(14px,1.6vw,16px)', marginBottom: '1rem' }}>
-          Analyze PCAP captures to uncover TLS, certificate, and cryptographic weaknesses with clear findings, evidence, and actionable remediation.
+          Upload a PCAP or PCAPNG file to start a new forensic email security investigation.
         </p>
 
         {/* CTA Buttons */}
         <div className="cta-group" style={{ display: 'flex', gap: '12px', marginBottom: '1.5rem' }}>
-          <button className="cta-btn" onClick={() => navigate('/analysis?job=8320')}>Start Analysis</button>
+          <button className="cta-btn" onClick={() => navigate('/analysis?job=8320')}>Load Sample Analysis</button>
           <button className="cta-btn secondary-cta" onClick={() => document.getElementById('how-it-works').scrollIntoView({ behavior: 'smooth' })}>See How It Works</button>
         </div>
 

@@ -160,7 +160,7 @@ export function Analysis() {
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
         <a
-          href="/new-analysis"
+          href="/workspace"
           style={{
             padding: '11px 26px', borderRadius: '999px',
             background: '#ffffff', color: '#000000',

@@ -47,7 +47,7 @@ export default function App() {
           }
         />
         <Route
-          path="/new-analysis"
+          path="/workspace"
           element={
             <ProtectedRoute>
               <NewAnalysis />
