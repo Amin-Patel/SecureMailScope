@@ -154,6 +154,37 @@ export function Settings() {
           </div>
         ))}
       </div>
+
+      {/* Account Session / Sign Out Card */}
+      <div style={{
+        marginTop: 16,
+        background: 'rgba(10,10,18,0.65)', backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16,
+        padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16,
+      }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 4 }}>Account Session</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Sign out of your SecureMailScope session</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            localStorage.removeItem('sms_auth');
+            window.location.href = '/login';
+          }}
+          style={{
+            padding: '9px 20px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer',
+            background: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: 13, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            transition: 'background 0.2s ease',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+        >
+          <i className="fa-solid fa-right-from-bracket" />
+          Sign Out
+        </button>
+      </div>
     </main>
   );
 }

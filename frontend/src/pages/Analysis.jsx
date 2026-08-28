@@ -90,7 +90,10 @@ export function Analysis() {
   }, [tabParam]);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     getAnalysis(jobId)
       .then(data => { setAnalysisData(data); setLoading(false); })
@@ -133,6 +136,66 @@ export function Analysis() {
   };
 
   const drawerOpen = !!(selectedFinding || selectedSession);
+
+  // No job selected — show the upload / start prompt
+  if (!jobId && !loading) return (
+    <main className="workspace-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '24px', textAlign: 'center' }}>
+      <div style={{
+        width: 72, height: 72, borderRadius: '50%',
+        background: 'rgba(99,102,241,0.15)',
+        border: '1px solid rgba(99,102,241,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 28, color: '#a5b4fc',
+        boxShadow: '0 0 24px rgba(99,102,241,0.25)',
+      }}>
+        <i className="fa-solid fa-magnifying-glass" />
+      </div>
+      <div>
+        <h2 style={{ fontSize: 'clamp(18px,2.5vw,26px)', fontWeight: 700, color: '#ffffff', marginBottom: 8 }}>
+          Analysis Workspace
+        </h2>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.55)', maxWidth: 400, lineHeight: 1.6 }}>
+          No analysis selected. Upload a PCAP file to start a new forensic investigation or select a previous analysis from History.
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+        <a
+          href="/new-analysis"
+          style={{
+            padding: '11px 26px', borderRadius: '999px',
+            background: '#ffffff', color: '#000000',
+            fontWeight: 700, fontSize: 14, textDecoration: 'none',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 0 18px rgba(255,255,255,0.2)',
+          }}
+        >
+          <i className="fa-solid fa-upload" style={{ fontSize: 12 }} />
+          Upload PCAP File
+        </a>
+        <a
+          href="/history"
+          style={{
+            padding: '10px 24px', borderRadius: '999px',
+            background: 'rgba(255,255,255,0.07)',
+            border: '1.5px solid rgba(255,255,255,0.2)',
+            color: '#ffffff', fontWeight: 600, fontSize: 14, textDecoration: 'none',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <i className="fa-solid fa-clock-rotate-left" style={{ fontSize: 12 }} />
+          View History
+        </a>
+      </div>
+      {/* Quick demo shortcut for testing */}
+      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+        Or{' '}
+        <a href="/analysis?job=8320" style={{ color: '#a5b4fc', textDecoration: 'underline' }}>
+          load a sample analysis
+        </a>
+        {' '}to explore the workspace.
+      </p>
+    </main>
+  );
 
   if (loading) return (
     <main className="workspace-container">

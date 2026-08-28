@@ -1,0 +1,202 @@
+{
+  "success": true,
+  "capture_id": "99af15a660c1",
+  "filename": "rsasnakeoil2.cap",
+  "summary": {
+    "total_packets": 0,
+    "encrypted_packets": 0,
+    "plaintext_packets": 0,
+    "encryption_ratio": 0,
+    "protocols_detected": [],
+    "tls_versions": {
+      "SSL 3.0": 11
+    },
+    "session_count": 0,
+    "handshake_count": 11,
+    "certificate_count": 0,
+    "risk_score": 15,
+    "risk_level": "LOW"
+  },
+  "findings": [
+    {
+      "id": "SMS-001",
+      "severity": "CRITICAL",
+      "type": "deprecated_protocol",
+      "title": "SSL 3.0 Detected (POODLE Vulnerable)",
+      "description": "SSL 3.0 was detected in 11 handshake(s). SSL 3.0 is vulnerable to the POODLE attack (CVE-2014-3566) and has been deprecated since RFC 7568 (2015).",
+      "evidence": "11 TLS handshakes using SSL 3.0",
+      "remediation": "1. Disable SSL 3.0 on all mail servers immediately\n2. Configure minimum TLS version to 1.2\n3. Test with: openssl s_client -connect mail.example.com:465 -tls1_2"
+    }
+  ],
+  "risk": {
+    "risk_score": 15,
+    "risk_level": "LOW",
+    "finding_score": 15,
+    "encryption_penalty": 0,
+    "critical_count": 1,
+    "high_count": 0,
+    "medium_count": 0,
+    "low_count": 0
+  },
+  "sessions": [],
+  "certificates": [],
+  "tls_handshakes": [
+    {
+      "frame": "6",
+      "timestamp": "2006-04-24T14:34:15.845071000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38713",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "ServerHello",
+      "cipher_suites": [
+        "0x0035"
+      ],
+      "sni": ""
+    },
+    {
+      "frame": "8",
+      "timestamp": "2006-04-24T14:34:18.651844000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "38713",
+      "dst_port": "443",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "ClientKeyExchange",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "9",
+      "timestamp": "2006-04-24T14:34:18.665681000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38713",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "13",
+      "timestamp": "2006-04-24T14:34:18.781396000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38713",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "14",
+      "timestamp": "2006-04-24T14:34:18.781661000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "38713",
+      "dst_port": "443",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "16",
+      "timestamp": "2006-04-24T14:34:18.781910000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38713",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "17",
+      "timestamp": "2006-04-24T14:34:18.782937000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "38713",
+      "dst_port": "443",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "18",
+      "timestamp": "2006-04-24T14:34:18.786317000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38713",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    },
+    {
+      "frame": "25",
+      "timestamp": "2006-04-24T14:34:18.807721000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "38714",
+      "dst_port": "443",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "ClientHello",
+      "cipher_suites": [
+        "0x0039",
+        "0x0038",
+        "0x0035",
+        "0x0033",
+        "0x0032",
+        "0x0004",
+        "0x0005",
+        "0x002f",
+        "0x0016",
+        "0x0013",
+        "0xfeff",
+        "0x000a",
+        "0x0015",
+        "0x0012",
+        "0xfefe",
+        "0x0009",
+        "0x0064",
+        "0x0062",
+        "0x0003",
+        "0x0006"
+      ],
+      "sni": ""
+    },
+    {
+      "frame": "27",
+      "timestamp": "2006-04-24T14:34:18.835185000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "443",
+      "dst_port": "38714",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "ServerHello",
+      "cipher_suites": [
+        "0x000a"
+      ],
+      "sni": ""
+    },
+    {
+      "frame": "29",
+      "timestamp": "2006-04-24T14:34:18.835766000+0530",
+      "src": "127.0.0.1",
+      "dst": "127.0.0.1",
+      "src_port": "38714",
+      "dst_port": "443",
+      "tls_version": "SSL 3.0",
+      "handshake_type": "Type ",
+      "cipher_suites": [],
+      "sni": ""
+    }
+  ]
+}

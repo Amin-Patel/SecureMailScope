@@ -1,25 +1,26 @@
 """
 Core PCAP analysis module for SecureMailScope
-Combines tshark TLS extraction with PyShark email protocol detection
+Full pipeline: PCAP → Detection → TLS → Certs → Security → Risk
+Uses tshark directly for maximum speed and FastAPI compatibility
 """
 
-import pyshark
+import subprocess
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict
 from datetime import datetime
 import json
 import hashlib
-
-# Import our tshark helper
 import sys
+
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.tshark_helper import TSharkHelper
+from utils.cert_analyzer import CertificateAnalyzer
+from core.security_engine import SecurityEngine
 
 
 class EmailPCAPAnalyzer:
-    """Advanced PCAP analyzer for email security assessment"""
-    
-    # Email protocol port mappings
+    """Full PCAP analysis pipeline for email security assessment"""
+
     EMAIL_PORTS = {
         25: 'SMTP',
         587: 'SMTP-Submission',
@@ -30,55 +31,88 @@ class EmailPCAPAnalyzer:
         143: 'IMAP',
         993: 'IMAPS'
     }
-    
+
     def __init__(self, pcap_path: str):
         self.pcap_path = Path(pcap_path)
         self.email_packets = []
         self.sessions = []
         self.tls_handshakes = []
+        self.certificates = []
         self.tshark = TSharkHelper()
-        
+
         if not self.pcap_path.exists():
             raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
-    
+
     def analyze(self) -> Dict:
-        """Main analysis pipeline"""
-        print(f"[*] Analyzing: {self.pcap_path.name}")
-        
+        """Full analysis pipeline"""
+        print(f"\n{'='*70}")
+        print(f"  SecureMailScope — Email Security Analysis")
+        print(f"  File: {self.pcap_path.name}")
+        print(f"{'='*70}\n")
+
         try:
-            # Step 1: Extract TLS handshakes using tshark
-            print("[*] Extracting TLS handshakes...")
-            self.tls_handshakes = self.tshark.extract_tls_handshakes(str(self.pcap_path))
-            print(f"[+] Found {len(self.tls_handshakes)} TLS handshakes")
-            
-            # Step 2: Extract email packets using PyShark
-            print("[*] Filtering email packets...")
+            # Step 1: TLS handshakes
+            print("[1/6] Extracting TLS handshakes...")
+            self.tls_handshakes = self.tshark.extract_tls_handshakes(
+                str(self.pcap_path)
+            )
+            print(f"       Found {len(self.tls_handshakes)} TLS handshakes")
+
+            # Step 2: Email packets (using tshark directly)
+            print("[2/6] Detecting email protocols...")
             self._extract_email_packets()
-            print(f"[+] Found {len(self.email_packets)} email packets")
-            
-            # Step 3: Reconstruct sessions
-            print("[*] Reconstructing sessions...")
+            print(f"       Found {len(self.email_packets)} email packets")
+
+            # Step 3: Sessions
+            print("[3/6] Reconstructing sessions...")
             self._reconstruct_sessions()
-            print(f"[+] Reconstructed {len(self.sessions)} sessions")
-            
-            # Step 4: Link TLS data to sessions
             self._link_tls_to_sessions()
-            
-            # Step 5: Generate summary
-            summary = self._generate_summary()
-            
-            return {
+            print(f"       Reconstructed {len(self.sessions)} sessions")
+
+            # Step 4: Certificates
+            print("[4/6] Extracting certificates...")
+            self.certificates = CertificateAnalyzer.extract_certificates(
+                str(self.pcap_path)
+            )
+            print(f"       Extracted {len(self.certificates)} certificates")
+
+            # Step 5: Security checks
+            print("[5/6] Running security checks...")
+            analysis_data = {
+                'summary': self._generate_summary(),
+                'sessions': self.sessions,
+                'tls_handshakes': self.tls_handshakes,
+                'certificates': self.certificates
+            }
+            engine = SecurityEngine(analysis_data)
+            findings = engine.run_all_checks()
+            risk = engine.calculate_risk_score()
+            print(f"       Found {len(findings)} security issues")
+            print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
+
+            # Step 6: Compile results
+            print("[6/6] Compiling results...\n")
+            summary = analysis_data['summary']
+            summary['risk_score'] = risk['risk_score']
+            summary['risk_level'] = risk['risk_level']
+
+            result = {
                 'success': True,
                 'capture_id': self._generate_capture_id(),
                 'filename': self.pcap_path.name,
                 'summary': summary,
-                'sessions': self.sessions,
-                'tls_handshakes': self.tls_handshakes,
-                'total_email_packets': len(self.email_packets)
+                'findings': findings,
+                'risk': risk,
+                'sessions': self._clean_sessions(),
+                'certificates': self.certificates,
+                'tls_handshakes': self.tls_handshakes
             }
-            
+
+            self._print_report(result)
+            return result
+
         except Exception as e:
-            print(f"[!] Analysis failed: {e}")
+            print(f"\n[!] Analysis failed: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -86,72 +120,77 @@ class EmailPCAPAnalyzer:
                 'error': str(e),
                 'error_type': type(e).__name__
             }
-    
+
     def _extract_email_packets(self):
-        """Extract email-related packets using PyShark"""
+        """Extract email-related packets using tshark (fast & async-safe)"""
+        filter_expr = (
+            "tcp.port==25 || tcp.port==587 || tcp.port==465 || "
+            "tcp.port==2525 || tcp.port==110 || tcp.port==995 || "
+            "tcp.port==143 || tcp.port==993"
+        )
+        cmd = [
+            'tshark',
+            '-r', str(self.pcap_path),
+            '-Y', filter_expr,
+            '-T', 'json',
+            '-e', 'frame.number',
+            '-e', 'frame.time',
+            '-e', 'ip.src',
+            '-e', 'ip.dst',
+            '-e', 'tcp.srcport',
+            '-e', 'tcp.dstport',
+            '-e', 'frame.len'
+        ]
         try:
-            # Use PyShark with display filter for performance
-            capture = pyshark.FileCapture(
-                str(self.pcap_path),
-                display_filter='tcp',
-                keep_packets=False  # Don't keep packets in memory
-            )
-            
-            for packet in capture:
-                try:
-                    # Check if packet has TCP layer
-                    if not hasattr(packet, 'tcp'):
-                        continue
-                    
-                    src_port = int(packet.tcp.srcport)
-                    dst_port = int(packet.tcp.dstport)
-                    
-                    # Check if email-related
-                    protocol = None
-                    if src_port in self.EMAIL_PORTS:
-                        protocol = self.EMAIL_PORTS[src_port]
-                    elif dst_port in self.EMAIL_PORTS:
-                        protocol = self.EMAIL_PORTS[dst_port]
-                    
-                    if protocol:
-                        packet_info = {
-                            'number': packet.number,
-                            'timestamp': str(packet.sniff_time),
-                            'src': packet.ip.src if hasattr(packet, 'ip') else 'N/A',
-                            'dst': packet.ip.dst if hasattr(packet, 'ip') else 'N/A',
-                            'src_port': src_port,
-                            'dst_port': dst_port,
-                            'protocol': protocol,
-                            'length': int(packet.length),
-                            'encrypted': protocol in ['SMTPS', 'IMAPS', 'POP3S']
-                        }
-                        
-                        self.email_packets.append(packet_info)
-                
-                except AttributeError:
-                    # Skip packets without required fields
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if not result.stdout.strip():
+                return
+
+            raw_data = json.loads(result.stdout)
+            for packet in raw_data:
+                layers = packet.get('_source', {}).get('layers', {})
+                src_port_raw = layers.get('tcp.srcport', [''])[0]
+                dst_port_raw = layers.get('tcp.dstport', [''])[0]
+                if not src_port_raw or not dst_port_raw:
                     continue
-            
-            capture.close()
-            
+
+                src_port = int(src_port_raw)
+                dst_port = int(dst_port_raw)
+
+                protocol = None
+                if src_port in self.EMAIL_PORTS:
+                    protocol = self.EMAIL_PORTS[src_port]
+                elif dst_port in self.EMAIL_PORTS:
+                    protocol = self.EMAIL_PORTS[dst_port]
+
+                if protocol:
+                    self.email_packets.append({
+                        'number': layers.get('frame.number', [''])[0],
+                        'timestamp': layers.get('frame.time', [''])[0],
+                        'src': layers.get('ip.src', [''])[0] or 'N/A',
+                        'dst': layers.get('ip.dst', [''])[0] or 'N/A',
+                        'src_port': src_port,
+                        'dst_port': dst_port,
+                        'protocol': protocol,
+                        'length': int(layers.get('frame.len', ['0'])[0]),
+                        'encrypted': protocol in ['SMTPS', 'IMAPS', 'POP3S']
+                    })
         except Exception as e:
-            print(f"[!] PyShark error: {e}")
-            raise
-    
+            print(f"       [!] Packet extraction error: {e}")
+
     def _reconstruct_sessions(self):
-        """Group packets into logical sessions"""
+        """Group packets into sessions"""
         session_map = {}
-        
+
         for pkt in self.email_packets:
-            # Create normalized session key (always lower IP:port first)
             endpoints = sorted([
                 (pkt['src'], pkt['src_port']),
                 (pkt['dst'], pkt['dst_port'])
             ])
-            session_key = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
-            
-            if session_key not in session_map:
-                session_map[session_key] = {
+            key = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
+
+            if key not in session_map:
+                session_map[key] = {
                     'id': f"session_{len(session_map) + 1}",
                     'protocol': pkt['protocol'],
                     'src': pkt['src'],
@@ -164,115 +203,107 @@ class EmailPCAPAnalyzer:
                     'encrypted': pkt['encrypted'],
                     'tls_info': None
                 }
-            
-            session_map[session_key]['packet_count'] += 1
-            session_map[session_key]['end_time'] = pkt['timestamp']
-        
+
+            session_map[key]['packet_count'] += 1
+            session_map[key]['end_time'] = pkt['timestamp']
+
         self.sessions = list(session_map.values())
-    
+
     def _link_tls_to_sessions(self):
-        """Link TLS handshake data to sessions"""
+        """Link TLS data to sessions"""
         for session in self.sessions:
-            # Find matching TLS handshakes
-            matching_handshakes = []
-            
-            for hs in self.tls_handshakes:
-                # Check if handshake belongs to this session
-                if ((hs['src'] == session['src'] and hs['dst'] == session['dst']) or
-                    (hs['src'] == session['dst'] and hs['dst'] == session['src'])):
-                    matching_handshakes.append(hs)
-            
-            if matching_handshakes:
-                # Extract TLS version from handshakes
-                versions = [hs['tls_version'] for hs in matching_handshakes if hs['tls_version']]
-                cipher_suites = []
-                for hs in matching_handshakes:
-                    if hs.get('cipher_suites'):
-                        cipher_suites.extend(hs['cipher_suites'])
-                
+            matching = [
+                hs for hs in self.tls_handshakes
+                if (hs['src'] == session['src'] and hs['dst'] == session['dst'])
+                or (hs['src'] == session['dst'] and hs['dst'] == session['src'])
+            ]
+            if matching:
+                versions = list(set(
+                    hs['tls_version'] for hs in matching if hs['tls_version']
+                ))
+                ciphers = []
+                for hs in matching:
+                    ciphers.extend(hs.get('cipher_suites', []))
+
                 session['tls_info'] = {
-                    'versions_detected': list(set(versions)),
-                    'handshake_count': len(matching_handshakes),
-                    'cipher_suites': list(set(cipher_suites)),
-                    'handshakes': matching_handshakes
+                    'versions': versions,
+                    'handshake_count': len(matching),
+                    'cipher_suites': list(set(ciphers))
                 }
-    
+
+    def _clean_sessions(self):
+        """Return sessions without raw packet data"""
+        clean = []
+        for s in self.sessions:
+            clean.append({
+                'id': s['id'],
+                'protocol': s['protocol'],
+                'src': f"{s['src']}:{s['src_port']}",
+                'dst': f"{s['dst']}:{s['dst_port']}",
+                'packet_count': s['packet_count'],
+                'encrypted': s['encrypted'],
+                'tls_versions': (
+                    s['tls_info']['versions'] if s.get('tls_info') else []
+                )
+            })
+        return clean
+
     def _generate_summary(self) -> Dict:
-        """Generate analysis summary"""
-        total_packets = len(self.email_packets)
-        encrypted_count = sum(1 for p in self.email_packets if p['encrypted'])
-        plaintext_count = total_packets - encrypted_count
-        
-        protocols = set(p['protocol'] for p in self.email_packets)
-        
-        # Count TLS versions
+        total = len(self.email_packets)
+        encrypted = sum(1 for p in self.email_packets if p['encrypted'])
+
         tls_versions = {}
         for hs in self.tls_handshakes:
-            ver = hs['tls_version']
-            if ver:
-                tls_versions[ver] = tls_versions.get(ver, 0) + 1
-        
-        # Count sessions with/without TLS
-        tls_sessions = sum(1 for s in self.sessions if s.get('tls_info'))
-        
+            v = hs['tls_version']
+            if v:
+                tls_versions[v] = tls_versions.get(v, 0) + 1
+
         return {
-            'total_packets': total_packets,
-            'encrypted_packets': encrypted_count,
-            'plaintext_packets': plaintext_count,
-            'encryption_ratio': round(encrypted_count / total_packets, 2) if total_packets > 0 else 0,
-            'protocols_detected': list(protocols),
+            'total_packets': total,
+            'encrypted_packets': encrypted,
+            'plaintext_packets': total - encrypted,
+            'encryption_ratio': round(encrypted / total, 2) if total > 0 else 0,
+            'protocols_detected': list(set(
+                p['protocol'] for p in self.email_packets
+            )),
             'tls_versions': tls_versions,
             'session_count': len(self.sessions),
-            'tls_sessions': tls_sessions,
-            'plaintext_sessions': len(self.sessions) - tls_sessions,
-            'handshake_count': len(self.tls_handshakes)
+            'handshake_count': len(self.tls_handshakes),
+            'certificate_count': len(self.certificates)
         }
-    
+
     def _generate_capture_id(self) -> str:
-        """Generate unique capture ID"""
-        timestamp = datetime.now().isoformat()
-        unique_str = f"{self.pcap_path.name}_{timestamp}"
-        return hashlib.md5(unique_str.encode()).hexdigest()[:12]
+        ts = datetime.now().isoformat()
+        return hashlib.md5(f"{self.pcap_path.name}_{ts}".encode()).hexdigest()[:12]
 
+    def _print_report(self, result):
+        """Print formatted report to console"""
+        summary = result['summary']
+        risk = result['risk']
+        findings = result['findings']
 
-def main():
-    """Test the analyzer"""
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("Usage: python pcap_analyzer.py <path_to_pcap>")
-        print("\nExample:")
-        print("  python pcap_analyzer.py test-data/rsasnakeoil2.cap")
-        sys.exit(1)
-    
-    pcap_file = sys.argv[1]
-    
-    analyzer = EmailPCAPAnalyzer(pcap_file)
-    result = analyzer.analyze()
-    
-    if result['success']:
-        print("\n" + "="*70)
-        print("ANALYSIS COMPLETE")
-        print("="*70)
-        print("\nSUMMARY:")
-        print(json.dumps(result['summary'], indent=2))
-        
-        print("\n" + "-"*70)
-        print("SESSIONS:")
-        for session in result['sessions']:
-            print(f"\n  {session['id']}: {session['protocol']}")
-            print(f"    {session['src']}:{session['src_port']} ↔ {session['dst']}:{session['dst_port']}")
-            print(f"    Packets: {session['packet_count']}")
-            print(f"    Encrypted: {session['encrypted']}")
-            if session.get('tls_info'):
-                print(f"    TLS Versions: {', '.join(session['tls_info']['versions_detected'])}")
-        
-        print("\n" + "="*70)
-        print(f"Capture ID: {result['capture_id']}")
-        print("="*70)
-    else:
-        print(f"\n[!] Analysis failed: {result['error']}")
+        print(f"{'='*70}")
+        print(f"  SECURITY ASSESSMENT REPORT")
+        print(f"{'='*70}")
+        print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}]")
+        print(f"  Email Packets: {summary['total_packets']}")
+        print(f"  Encrypted: {summary['encrypted_packets']}  |  "
+              f"Plaintext: {summary['plaintext_packets']}")
+        print(f"  Protocols: {', '.join(summary['protocols_detected']) or 'None'}")
+        print(f"  TLS Versions: {', '.join(summary['tls_versions'].keys()) or 'None'}")
+        print(f"  Certificates: {summary['certificate_count']}")
 
+        if findings:
+            print(f"\n  {'─'*66}")
+            print(f"  FINDINGS ({len(findings)})")
+            print(f"  {'─'*66}")
+            for f in findings:
+                icon = {'CRITICAL': '🔴', 'HIGH': '🟠',
+                        'MEDIUM': '🟡', 'LOW': '🟢'}.get(f['severity'], '⚪')
+                print(f"\n  {icon} [{f['severity']}] {f['title']}")
+                print(f"     {f['description'][:100]}...")
+                print(f"     Evidence: {f['evidence']}")
+        else:
+            print(f"\n  ✅ No security issues detected!")
 
-if __name__ == '__main__':
-    main()
+        print(f"\n{'='*70}\n")

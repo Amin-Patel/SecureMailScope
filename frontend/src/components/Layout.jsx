@@ -7,8 +7,9 @@ const VIDEO_SRC =
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/', label: 'New Analysis' },
-  { to: '/history', label: 'Analyses' },
+  { to: '/new-analysis', label: 'New Analysis' },
+  { to: '/analysis', label: 'Analysis' },
+  { to: '/history', label: 'History' },
   { to: '/help', label: 'Help' },
 ];
 
@@ -84,7 +85,7 @@ export function Layout({ children }) {
         {/* Header */}
         <header className="header">
           <Link
-            to="/"
+            to="/dashboard"
             className="logo"
             aria-label="Logo Home"
             style={{
