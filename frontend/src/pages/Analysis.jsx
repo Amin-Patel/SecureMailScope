@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { getAnalysis, pollAnalysis } from '../utils/api';
+import { getAnalysis } from '../utils/api';
 
 // ── Toast notification ────────────────────────────────────────────────────────
 function Toast({ toasts, remove }) {

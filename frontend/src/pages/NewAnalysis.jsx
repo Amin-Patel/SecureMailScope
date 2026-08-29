@@ -50,8 +50,9 @@ export function NewAnalysis() {
         <div id="pcap-upload-container" className="anim" style={{ '--d': '0.4s', width: '100%', maxWidth: '480px', margin: '0 auto' }}>
           <PcapUpload onAnalysisStart={async (file) => {
             try {
-              const jobId = await uploadPcap(file);
-              navigate(`/analysis?job=${jobId}`);
+              const response = await uploadPcap(file);
+              const captureId = response.capture_id;
+              navigate(`/dashboard/${captureId}`);
             } catch (err) {
               console.error('Upload failed', err);
             }

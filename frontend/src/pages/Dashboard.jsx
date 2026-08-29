@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import './Dashboard.css';
-import { getAnalysis } from '../utils/api';
+import { getAnalysisResults } from '../utils/api';
 import { DashboardCharts } from '../components/DashboardCharts';
 
 export function Dashboard() {
-  const [searchParams] = useSearchParams();
-  const jobId = searchParams.get('job') || '8320';
+  const { captureId } = useParams();
+  const jobId = captureId || '8320'; // fallback for backward compatibility
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState({ totalSize: "0 MB", sessions: 0, tlsSessions: 0, plaintextEmails: 0, riskScore: 0, riskLevel: 'UNKNOWN' });
@@ -17,7 +17,7 @@ export function Dashboard() {
       return;
     }
     setLoading(true);
-    getAnalysis(jobId)
+    getAnalysisResults(jobId)
       .then((data) => {
         const summary = data.summary || {};
         setMetrics({

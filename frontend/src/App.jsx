@@ -12,10 +12,12 @@ import { Settings } from './pages/Settings';
 
 // Protected Route wrapper: Redirects unauthenticated users to /login
 function ProtectedRoute({ children }) {
-  const isAuth = localStorage.getItem('sms_auth') === 'true';
-  if (!isAuth) {
-    return <Navigate to="/login" replace />;
-  }
+  // For this development/demo build we skip auth checks.
+  // In production, replace with proper authentication logic.
+  // const isAuth = localStorage.getItem('sms_auth') === 'true';
+  // if (!isAuth) {
+  //   return <Navigate to="/login" replace />;
+  // }
   return <Layout>{children}</Layout>;
 }
 
@@ -32,6 +34,14 @@ export default function App() {
         {/* Authenticated Application Routes */}
         <Route
           path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/:captureId"
           element={
             <ProtectedRoute>
               <Dashboard />

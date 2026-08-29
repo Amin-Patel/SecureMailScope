@@ -1,7 +1,7 @@
 pyshark==0.6
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-pydantic==2.5.0
-cryptography==41.0.7
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+pydantic>=2.7,<3
+cryptography>=42,<47
 python-dateutil==2.8.2

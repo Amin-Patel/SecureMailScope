@@ -1,87 +1,90 @@
 // src/utils/api.js
-// Mock API utilities to simulate backend behavior for SecureMailScope front‑end.
+// Real API service layer for SecureMailScope frontend.
+// Uses Axios to communicate with the FastAPI backend at http://localhost:8001/api
 
-/** Generate a random job ID (string) */
-function generateJobId() {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+import axios from 'axios';
+
+// Create a reusable Axios instance with the required base URL.
+const apiClient = axios.create({
+  baseURL: 'http://localhost:8001/api',
+  timeout: 15000, // 15 seconds timeout for all requests
+});
+
+/**
+ * Helper to extract a user‑friendly error message from an Axios error.
+ * @param {any} error The error thrown by Axios
+ * @returns {string} Human readable message
+ */
+function parseError(error) {
+  if (error.response) {
+    // Server responded with a status outside the 2xx range
+    const msg = error.response.data?.detail || error.response.data?.message;
+    return msg || `Server returned status ${error.response.status}`;
+  }
+  if (error.request) {
+    // No response received – likely a network problem
+    return 'Unable to connect to the SecureMailScope analysis server. Please make sure the backend is running.';
+  }
+  // Something else happened while setting up the request
+  return error.message || 'An unexpected error occurred.';
 }
 
-/** Simulate uploading a PCAP file. Returns a Promise that resolves with a job ID */
-export function uploadPcap(file) {
-  console.log('Mock upload of', file?.name);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(generateJobId());
-    }, 500);
-  });
+/**
+ * Upload a PCAP (or PCAPNG) file to the backend.
+ * @param {File} file The file object selected by the user.
+ * @returns {Promise<Object>} Resolves with the backend response containing capture_id, filename, size, status.
+ */
+export async function uploadPCAP(file) {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const response = await apiClient.post('/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  } catch (err) {
+    // Throw a clean error that callers can catch and display.
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
 }
 
-/** Simulate fetching analysis data for a given job ID */
-export function getAnalysis(jobId) {
-  console.log('Fetching mock analysis data for job', jobId);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        summary: {
-          jobId,
-          riskScore: 82,
-          emailPackets: 1234,
-          findingsCount: 4,
-          sessions: 9,
-          description: 'Automated analysis of captured traffic.'
-        },
-        findings: [
-          {
-            id: 1,
-            severity: 'critical',
-            severityLabel: 'Critical',
-            title: 'Plaintext AUTH over SMTP',
-            category: 'Authentication',
-            endpoint: 'mail.example.com',
-            desc: 'Credentials sent without encryption.',
-            evidence: 'Packet 0x1a2b3c',
-            reco: 'Enforce STARTTLS before AUTH.'
-          },
-          {
-            id: 2,
-            severity: 'high',
-            severityLabel: 'High',
-            title: 'Expired TLS Certificate',
-            category: 'TLS',
-            endpoint: 'mail.example.com',
-            desc: 'Certificate expired on 2025-12-31.',
-            evidence: 'Certificate #0xdeadbeef',
-            reco: 'Renew certificate.'
-          }
-        ],
-        sessions: [
-          {
-            id: 101,
-            src: '192.168.1.10',
-            dst: '192.168.1.20',
-            protocol: 'SMTP',
-            tlsVer: 'Plaintext',
-            statusLabel: 'Weak',
-            statusClass: 'badge-low',
-            assess: 'Plaintext traffic detected.'
-          },
-          {
-            id: 102,
-            src: '192.168.1.30',
-            dst: '192.168.1.40',
-            protocol: 'SMTP',
-            tlsVer: 'TLS 1.2',
-            statusLabel: 'Secure',
-            statusClass: 'badge-high',
-            assess: 'Secure TLS session.'
-          }
-        ]
-      });
-    }, 400);
-  });
+/**
+ * Retrieve full analysis results for a given capture ID.
+ * @param {string} captureId The ID returned from the upload step.
+ * @returns {Promise<Object>} The complete analysis payload from the backend.
+ */
+export async function getAnalysisResults(captureId) {
+  try {
+    const response = await apiClient.get(`/analysis/${captureId}/results`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
 }
 
-/** Optional polling function – here it just resolves immediately */
-export function pollAnalysis(jobId) {
-  return getAnalysis(jobId);
+/**
+ * Get the current processing status for a capture.
+ * @param {string} captureId The capture identifier.
+ * @returns {Promise<Object>} Backend status payload.
+ */
+export async function getAnalysisStatus(captureId) {
+  try {
+    const response = await apiClient.get(`/analysis/${captureId}/status`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
 }
+
+// Backward‑compatible aliases used by existing components.
+export const uploadPcap = uploadPCAP;
+export const getAnalysis = getAnalysisResults;
