@@ -110,7 +110,7 @@ export function PcapUpload({ onFileSelected, onUpload, onUploadSuccess, onUpload
       if (onAnalysisStart) {
         onAnalysisStart(file);
       } else {
-        navigate(`/analysis?id=8320&file=${encodeURIComponent(file.name)}`);
+        navigate(`/analysis?file=${encodeURIComponent(file.name)}`);
       }
     }
   };

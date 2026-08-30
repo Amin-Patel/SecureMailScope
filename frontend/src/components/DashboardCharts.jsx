@@ -177,12 +177,16 @@ export function DashboardCharts({ jobId }) {
 
   (analysis.sessions || []).forEach(s => {
     protocolCounts[s.protocol] = (protocolCounts[s.protocol] || 0) + 1;
-    if (s.tlsVer && s.tlsVer.toLowerCase() === 'plaintext') {
-      encryptionCounts.Plaintext += 1;
-    } else {
+    // Backend: s.encrypted (boolean), s.tls_versions (string[])
+    if (s.encrypted) {
       encryptionCounts.Encrypted += 1;
+    } else {
+      encryptionCounts.Plaintext += 1;
     }
-    const k = s.tlsVer || 'Unknown';
+    // Derive a display label for TLS version
+    const k = (s.tls_versions && s.tls_versions.length > 0)
+      ? s.tls_versions.join('/')
+      : (s.encrypted ? 'Encrypted' : 'Plaintext');
     tlsVersionCounts[k] = (tlsVersionCounts[k] || 0) + 1;
   });
 

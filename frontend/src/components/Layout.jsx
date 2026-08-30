@@ -14,10 +14,10 @@ const NAV_LINKS = [
 ];
 
 const STATS = [
-  { icon: 'fa-bolt',          value: '<120ms',  label: 'Inference Time' },
-  { icon: 'fa-shield-check',  value: '99.99%',  label: 'Platform Uptime' },
-  { icon: 'fa-clock',         value: '24/7',    label: 'Runtime' },
-  { icon: 'fa-layer-group',   value: '2.4B',    label: 'Ctx Windows' },
+  { icon: 'fa-bolt', target: 120, decimals: 0, prefix: '<', suffix: 'ms', fallback: '<120ms', label: 'Inference Time' },
+  { icon: 'fa-shield-check', target: 99.99, decimals: 2, prefix: '', suffix: '%', fallback: '99.99%', label: 'Platform Uptime' },
+  { icon: 'fa-clock', target: 24, decimals: 0, prefix: '', suffix: '/7', fallback: '24/7', label: 'Runtime' },
+  { icon: 'fa-layer-group', target: 2.4, decimals: 1, prefix: '', suffix: 'B', fallback: '2.4B', label: 'Ctx Windows' },
 ];
 
 export function Layout({ children }) {
@@ -171,7 +171,7 @@ export function Layout({ children }) {
 
         {/* Stats Footer */}
         <footer className="stats-footer" ref={footerRef}>
-          {STATS.map(({ icon, value, label }, i) => (
+          {STATS.map(({ icon, target, decimals, prefix, suffix, fallback, label }, i) => (
             <div
               className="stat-col"
               key={label}
@@ -179,7 +179,15 @@ export function Layout({ children }) {
             >
               <i className={`fa-solid ${icon} stat-icon`} style={{ fontSize: 'clamp(14px,1.8vw,18px)', color: 'rgba(255,255,255,0.6)' }}></i>
               <div>
-                <span className="stat-value">{value}</span>
+                <span
+                  className="stat-value"
+                  data-target={target}
+                  data-decimals={decimals}
+                  data-prefix={prefix}
+                  data-suffix={suffix}
+                >
+                  {fallback}
+                </span>
                 <span className="stat-label" style={{ display: 'block' }}>{label}</span>
               </div>
             </div>

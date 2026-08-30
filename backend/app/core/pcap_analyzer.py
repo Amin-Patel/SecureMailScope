@@ -12,6 +12,10 @@ import json
 import hashlib
 import sys
 
+# Ensure stdout can handle any character on Windows (avoids charmap errors)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.tshark_helper import TSharkHelper
 from utils.cert_analyzer import CertificateAnalyzer
@@ -298,8 +302,8 @@ class EmailPCAPAnalyzer:
             print(f"  FINDINGS ({len(findings)})")
             print(f"  {'─'*66}")
             for f in findings:
-                icon = {'CRITICAL': '🔴', 'HIGH': '🟠',
-                        'MEDIUM': '🟡', 'LOW': '🟢'}.get(f['severity'], '⚪')
+                icon = {'CRITICAL': '[CRIT]', 'HIGH': '[HIGH]',
+                        'MEDIUM': '[MED] ', 'LOW': '[LOW] '}.get(f['severity'], '[???] ')
                 print(f"\n  {icon} [{f['severity']}] {f['title']}")
                 print(f"     {f['description'][:100]}...")
                 print(f"     Evidence: {f['evidence']}")

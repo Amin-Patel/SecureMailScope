@@ -85,6 +85,23 @@ export async function getAnalysisStatus(captureId) {
   }
 }
 
+/**
+ * Retrieve all completed analyses from the backend.
+ * @returns {Promise<Object>} Object containing analyses list and total count.
+ */
+export async function getAnalyses() {
+  try {
+    const response = await apiClient.get('/analyses');
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
 // Backward‑compatible aliases used by existing components.
 export const uploadPcap = uploadPCAP;
 export const getAnalysis = getAnalysisResults;
+

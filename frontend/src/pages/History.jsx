@@ -1,11 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { getAnalyses } from '../utils/api';
 
-const HISTORY_DATA = [
-  { id: '8320', name: 'Mail-Server-Audit.pcap', date: 'Aug 24, 2026', time: '22:30', findings: 4, sessions: 9, score: 82, riskLevel: 'HIGH' },
-  { id: '8318', name: 'Internal-SMTP-Leaked-Traffic.pcapng', date: 'Aug 21, 2026', time: '14:15', findings: 12, sessions: 34, score: 64, riskLevel: 'MEDIUM' },
-  { id: '8310', name: 'External-SMTP-Test.pcap', date: 'Aug 15, 2026', time: '09:12', findings: 0, sessions: 7, score: 100, riskLevel: 'LOW' },
-];
+/** Normalise backend analysis item into the shape HistoryCard expects */
+function normaliseAnalysis(item) {
+  const ts = item.timestamp ? new Date(item.timestamp) : null;
+  const dateStr = ts && !isNaN(ts.getTime())
+    ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '--';
+  const timeStr = ts && !isNaN(ts.getTime())
+    ? ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : '--';
+  const score = item.risk_score ?? 0;
+  return {
+    id: item.capture_id || 'unknown',
+    name: item.filename || 'Unknown File',
+    date: dateStr,
+    time: timeStr,
+    findings: item.findings_count ?? 0,
+    sessions: item.session_count ?? 0,
+    score,
+    riskLevel: item.risk_level || 'UNKNOWN',
+  };
+}
 
 function getRiskConfig(score) {
   if (score >= 75) return { color: '#ef4444', glow: 'rgba(239,68,68,0.35)', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.3)', label: 'HIGH' };
@@ -89,7 +106,7 @@ function HistoryCard({ entry }) {
           </span>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center', gap: 5 }}>
             <i className="fa-solid fa-network-wired" style={{ opacity: 0.6, fontSize: 9 }}></i>
-            {entry.sessions} sessions
+            {entry.sessions} session{entry.sessions !== 1 ? 's' : ''}
           </span>
           <span style={{
             fontSize: 11, fontWeight: 600,
@@ -156,28 +173,67 @@ function HistoryCard({ entry }) {
 }
 
 export function History() {
+  const [analyses, setAnalyses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
-  const filtered = HISTORY_DATA.filter(e =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.id.includes(search)
+
+  const loadData = () => {
+    setLoading(true);
+    setError(null);
+    getAnalyses()
+      .then(res => {
+        const list = res.analyses || [];
+        setAnalyses(list.map(normaliseAnalysis));
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setError('Unable to load analysis history. Ensure backend server is running.');
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const filtered = analyses.filter(e =>
+    (e.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (e.id || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <main style={{ width: '100%', maxWidth: 900, margin: '0 auto', padding: '0 16px', position: 'relative', zIndex: 5 }}>
       {/* Title bar */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{
-          background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          fontSize: 'clamp(22px, 3vw, 32px)', fontWeight: 800, letterSpacing: '-0.03em',
-          marginBottom: 6,
-        }}>
-          Analysis History
-        </h2>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>
-          {HISTORY_DATA.length} capture{HISTORY_DATA.length !== 1 ? 's' : ''} analysed
-        </p>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{
+            background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            fontSize: 'clamp(22px, 3vw, 32px)', fontWeight: 800, letterSpacing: '-0.03em',
+            marginBottom: 6,
+          }}>
+            Analysis History
+          </h2>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>
+            {loading ? 'Fetching historical captures…' : `${analyses.length} capture${analyses.length !== 1 ? 's' : ''} analysed`}
+          </p>
+        </div>
+        <Link
+          to="/workspace"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '9px 18px', borderRadius: 10,
+            background: '#ffffff', color: '#000000',
+            fontSize: 13, fontWeight: 700, textDecoration: 'none',
+            boxShadow: '0 0 16px rgba(255,255,255,0.2)',
+          }}
+        >
+          <i className="fa-solid fa-plus" style={{ fontSize: 11 }} />
+          New Analysis
+        </Link>
       </div>
 
       {/* Search bar */}
@@ -200,15 +256,73 @@ export function History() {
         />
       </div>
 
-      {/* List */}
-      {filtered.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '60px 0', color: 'rgba(255,255,255,0.3)', fontSize: 14,
-        }}>
-          <i className="fa-solid fa-box-open" style={{ fontSize: 32, marginBottom: 12, display: 'block' }}></i>
-          No analyses found
+      {/* Loading state */}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} className="glass-card" style={{ padding: '20px 24px', display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div className="skeleton" style={{ width: 48, height: 48, borderRadius: 12 }} />
+              <div style={{ flex: 1 }}>
+                <div className="skeleton" style={{ height: 16, width: '40%', marginBottom: 8 }} />
+                <div className="skeleton" style={{ height: 12, width: '70%' }} />
+              </div>
+              <div className="skeleton" style={{ width: 64, height: 64, borderRadius: '50%' }} />
+            </div>
+          ))}
         </div>
-      ) : (
+      )}
+
+      {/* Error state */}
+      {!loading && error && (
+        <div className="glass-card" style={{ textAlign: 'center', padding: '40px 20px', color: '#ef4444' }}>
+          <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: 32, marginBottom: 12, display: 'block' }}></i>
+          <p style={{ fontSize: 14, marginBottom: 16 }}>{error}</p>
+          <button
+            onClick={loadData}
+            style={{
+              padding: '8px 18px', borderRadius: 8,
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+              color: '#f87171', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && filtered.length === 0 && (
+        <div className="glass-card" style={{
+          textAlign: 'center', padding: '60px 20px', color: 'rgba(255,255,255,0.4)',
+        }}>
+          <i className="fa-solid fa-box-open" style={{ fontSize: 36, marginBottom: 16, display: 'block', color: 'rgba(255,255,255,0.2)' }}></i>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginBottom: 6 }}>
+            {search ? 'No matching analyses found' : 'No analyses yet'}
+          </h3>
+          <p style={{ fontSize: 13, maxWidth: 360, margin: '0 auto 20px', lineHeight: 1.5 }}>
+            {search
+              ? `No results match "${search}". Try checking for typos or clear your search.`
+              : 'Upload a network packet capture file to start evaluating email security risks.'}
+          </p>
+          {!search && (
+            <Link
+              to="/workspace"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '10px 22px', borderRadius: 999,
+                background: '#ffffff', color: '#000000',
+                fontWeight: 700, fontSize: 13, textDecoration: 'none',
+              }}
+            >
+              <i className="fa-solid fa-upload" style={{ fontSize: 11 }} />
+              Upload PCAP Now
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* List */}
+      {!loading && !error && filtered.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filtered.map(entry => <HistoryCard key={entry.id} entry={entry} />)}
         </div>
@@ -216,3 +330,4 @@ export function History() {
     </main>
   );
 }
+

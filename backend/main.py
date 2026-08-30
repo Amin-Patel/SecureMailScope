@@ -188,11 +188,15 @@ async def list_analyses():
                     "risk_score": data.get("summary", {}).get("risk_score"),
                     "risk_level": data.get("summary", {}).get("risk_level"),
                     "timestamp": data.get("upload_timestamp"),
-                    "findings_count": len(data.get("findings", []))
+                    "findings_count": len(data.get("findings", [])),
+                    "session_count": data.get("summary", {}).get("session_count", len(data.get("sessions", []))),
+                    "total_packets": data.get("summary", {}).get("total_packets", 0)
                 })
         except:
             continue
 
+    # Sort latest first by timestamp
+    analyses.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
     return {"analyses": analyses, "total": len(analyses)}
 
 

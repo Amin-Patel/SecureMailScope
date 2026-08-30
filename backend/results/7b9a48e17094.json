@@ -1,0 +1,67 @@
+{
+  "success": true,
+  "capture_id": "7b9a48e17094",
+  "filename": "7b9a48e17094.pcap",
+  "summary": {
+    "total_packets": 78,
+    "encrypted_packets": 0,
+    "plaintext_packets": 78,
+    "encryption_ratio": 0.0,
+    "protocols_detected": [
+      "SMTP-Submission"
+    ],
+    "tls_versions": {},
+    "session_count": 1,
+    "handshake_count": 0,
+    "certificate_count": 0,
+    "risk_score": 55,
+    "risk_level": "HIGH"
+  },
+  "findings": [
+    {
+      "id": "SMS-001",
+      "severity": "CRITICAL",
+      "type": "plaintext_protocol",
+      "title": "Unencrypted Email Protocol Detected",
+      "description": "78 out of 78 email packets (100.0%) are transmitted in plaintext using SMTP-Submission. Credentials and email content are visible to any network observer.",
+      "evidence": "78 plaintext packets detected on protocols: SMTP-Submission",
+      "remediation": "1. Enable TLS encryption for all email services\n2. Use SMTPS (port 465), IMAPS (port 993), POP3S (port 995)\n3. Enforce STARTTLS for SMTP submission (port 587)\n4. Disable plaintext authentication"
+    },
+    {
+      "id": "SMS-002",
+      "severity": "HIGH",
+      "type": "missing_starttls",
+      "title": "No STARTTLS Negotiation Detected",
+      "description": "1 plaintext SMTP session(s) detected with no TLS upgrade (STARTTLS). Email is transmitted entirely in cleartext.",
+      "evidence": "1 SMTP sessions on port 25/587 without STARTTLS",
+      "remediation": "1. Enable STARTTLS on SMTP server\n2. Configure opportunistic TLS (TLS if available)\n3. Consider MTA-STS policy for enforced TLS\n4. Postfix: smtpd_tls_security_level = may\n5. Dovecot: ssl = required"
+    }
+  ],
+  "risk": {
+    "risk_score": 55,
+    "risk_level": "HIGH",
+    "finding_score": 25,
+    "encryption_penalty": 30.0,
+    "critical_count": 1,
+    "high_count": 1,
+    "medium_count": 0,
+    "low_count": 0
+  },
+  "sessions": [
+    {
+      "id": "session_1",
+      "protocol": "SMTP-Submission",
+      "src": "192.168.1.4:1470",
+      "dst": "217.12.11.66:587",
+      "packet_count": 78,
+      "encrypted": false,
+      "tls_versions": []
+    }
+  ],
+  "certificates": [],
+  "tls_handshakes": [],
+  "upload_timestamp": "2026-08-30T18:39:13.549365",
+  "original_filename": "sample-imf.pcap",
+  "file_size": 50965,
+  "status": "completed"
+}

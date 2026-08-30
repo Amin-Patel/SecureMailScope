@@ -42,7 +42,7 @@ export function NewAnalysis() {
 
         {/* CTA Buttons */}
         <div className="cta-group" style={{ display: 'flex', gap: '12px', marginBottom: '1.5rem' }}>
-          <button className="cta-btn" onClick={() => navigate('/analysis?job=8320')}>Load Sample Analysis</button>
+          <button className="cta-btn" onClick={() => navigate('/analysis')}>Load Sample Analysis</button>
           <button className="cta-btn secondary-cta" onClick={() => document.getElementById('how-it-works').scrollIntoView({ behavior: 'smooth' })}>See How It Works</button>
         </div>
 
@@ -52,7 +52,9 @@ export function NewAnalysis() {
             try {
               const response = await uploadPcap(file);
               const captureId = response.capture_id;
-              navigate(`/dashboard/${captureId}`);
+              // Navigate directly to the Analysis workspace so the user
+              // sees their results immediately, not the dashboard.
+              navigate(`/analysis?job=${captureId}`);
             } catch (err) {
               console.error('Upload failed', err);
             }

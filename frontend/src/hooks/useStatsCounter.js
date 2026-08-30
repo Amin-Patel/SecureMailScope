@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 
 /**
  * Animates stat counters when the footer scrolls into view.
- * Mirrors the vanilla JS setupStatsCounter() logic from main.js.
  * 
  * @param {React.RefObject} footerRef - ref attached to the stats-footer element
  */
@@ -11,8 +10,6 @@ export function useStatsCounter(footerRef) {
 
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const suffixes = ['ms', '%', '/7', 'M'];
 
     const animate = () => {
       if (hasAnimated.current) return;
@@ -24,21 +21,22 @@ export function useStatsCounter(footerRef) {
 
       const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
-      if (prefersReduced) {
-        statValues.forEach((el, i) => {
-          const target = parseFloat(el.getAttribute('data-target'));
-          const decimals = parseInt(el.getAttribute('data-decimals') || '0', 10);
-          el.textContent = target.toFixed(decimals) + suffixes[i];
-        });
-        return;
-      }
-
       statValues.forEach((el, i) => {
-        const target = parseFloat(el.getAttribute('data-target'));
+        const rawTarget = el.getAttribute('data-target');
+        if (!rawTarget || isNaN(parseFloat(rawTarget))) return;
+
+        const target = parseFloat(rawTarget);
         const decimals = parseInt(el.getAttribute('data-decimals') || '0', 10);
-        const suffix = suffixes[i];
+        const prefix = el.getAttribute('data-prefix') || '';
+        const suffix = el.getAttribute('data-suffix') || '';
+
+        if (prefersReduced) {
+          el.textContent = `${prefix}${target.toFixed(decimals)}${suffix}`;
+          return;
+        }
+
         const duration = 1500 + i * 80;
-        const startOffset = 480 + i * 90;
+        const startOffset = 400 + i * 90;
 
         setTimeout(() => {
           let startTime = null;
@@ -49,12 +47,12 @@ export function useStatsCounter(footerRef) {
             const easedProgress = easeOutCubic(progress);
             const currentValue = easedProgress * target;
 
-            el.textContent = currentValue.toFixed(decimals) + suffix;
+            el.textContent = `${prefix}${currentValue.toFixed(decimals)}${suffix}`;
 
             if (progress < 1) {
               requestAnimationFrame(updateCounter);
             } else {
-              el.textContent = target.toFixed(decimals) + suffix;
+              el.textContent = `${prefix}${target.toFixed(decimals)}${suffix}`;
             }
           }
 
@@ -66,11 +64,6 @@ export function useStatsCounter(footerRef) {
     const footer = footerRef.current;
     if (!footer) return;
 
-    if (prefersReduced) {
-      animate();
-      return;
-    }
-
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -80,7 +73,7 @@ export function useStatsCounter(footerRef) {
           }
         });
       },
-      { threshold: 0.25 }
+      { threshold: 0.15 }
     );
 
     observer.observe(footer);
@@ -88,3 +81,4 @@ export function useStatsCounter(footerRef) {
     return () => observer.disconnect();
   }, [footerRef]);
 }
+
