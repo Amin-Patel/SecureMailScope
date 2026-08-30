@@ -1,6 +1,6 @@
 """
 Core PCAP analysis module for SecureMailScope
-Full pipeline: PCAP → Detection → TLS → Certs → Security → Risk
+Full pipeline: PCAP → Detection → TLS → Certs → Security → AI Intelligence → Risk
 Uses tshark directly for maximum speed and FastAPI compatibility
 """
 
@@ -12,14 +12,11 @@ import json
 import hashlib
 import sys
 
-# Ensure stdout can handle any character on Windows (avoids charmap errors)
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.tshark_helper import TSharkHelper
 from utils.cert_analyzer import CertificateAnalyzer
 from core.security_engine import SecurityEngine
+from services.gemini_service import GeminiSecurityAssistant
 
 
 class EmailPCAPAnalyzer:
@@ -43,6 +40,7 @@ class EmailPCAPAnalyzer:
         self.tls_handshakes = []
         self.certificates = []
         self.tshark = TSharkHelper()
+        self.ai_assistant = GeminiSecurityAssistant()
 
         if not self.pcap_path.exists():
             raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
@@ -56,32 +54,32 @@ class EmailPCAPAnalyzer:
 
         try:
             # Step 1: TLS handshakes
-            print("[1/6] Extracting TLS handshakes...")
+            print("[1/7] Extracting TLS handshakes...")
             self.tls_handshakes = self.tshark.extract_tls_handshakes(
                 str(self.pcap_path)
             )
             print(f"       Found {len(self.tls_handshakes)} TLS handshakes")
 
             # Step 2: Email packets (using tshark directly)
-            print("[2/6] Detecting email protocols...")
+            print("[2/7] Detecting email protocols...")
             self._extract_email_packets()
             print(f"       Found {len(self.email_packets)} email packets")
 
             # Step 3: Sessions
-            print("[3/6] Reconstructing sessions...")
+            print("[3/7] Reconstructing sessions...")
             self._reconstruct_sessions()
             self._link_tls_to_sessions()
             print(f"       Reconstructed {len(self.sessions)} sessions")
 
             # Step 4: Certificates
-            print("[4/6] Extracting certificates...")
+            print("[4/7] Extracting certificates...")
             self.certificates = CertificateAnalyzer.extract_certificates(
                 str(self.pcap_path)
             )
             print(f"       Extracted {len(self.certificates)} certificates")
 
             # Step 5: Security checks
-            print("[5/6] Running security checks...")
+            print("[5/7] Running security checks...")
             analysis_data = {
                 'summary': self._generate_summary(),
                 'sessions': self.sessions,
@@ -94,8 +92,20 @@ class EmailPCAPAnalyzer:
             print(f"       Found {len(findings)} security issues")
             print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
 
-            # Step 6: Compile results
-            print("[6/6] Compiling results...\n")
+            # Step 6: AI-Powered Intelligence Enrichment
+            print("[6/7] Generating AI Explanations & Threat Intelligence...")
+            for finding in findings:
+                ai_meta = self.ai_assistant.explain_finding(finding)
+                finding['ai_explanation'] = ai_meta.get('ai_explanation', '')
+                finding['ai_confidence'] = ai_meta.get('ai_confidence', 'HIGH')
+
+            ai_summary = self.ai_assistant.generate_executive_summary(
+                analysis_data['summary'], findings, risk
+            )
+            print("       AI Threat Intelligence generated successfully")
+
+            # Step 7: Compile results
+            print("[7/7] Compiling results...\n")
             summary = analysis_data['summary']
             summary['risk_score'] = risk['risk_score']
             summary['risk_level'] = risk['risk_level']
@@ -105,6 +115,7 @@ class EmailPCAPAnalyzer:
                 'capture_id': self._generate_capture_id(),
                 'filename': self.pcap_path.name,
                 'summary': summary,
+                'ai_summary': ai_summary,
                 'findings': findings,
                 'risk': risk,
                 'sessions': self._clean_sessions(),
@@ -285,28 +296,31 @@ class EmailPCAPAnalyzer:
         summary = result['summary']
         risk = result['risk']
         findings = result['findings']
+        ai_summary = result.get('ai_summary', '')
 
         print(f"{'='*70}")
         print(f"  SECURITY ASSESSMENT REPORT")
         print(f"{'='*70}")
         print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}]")
         print(f"  Email Packets: {summary['total_packets']}")
-        print(f"  Encrypted: {summary['encrypted_packets']}  |  "
-              f"Plaintext: {summary['plaintext_packets']}")
+        print(f"  Encrypted: {summary['encrypted_packets']}  |  Plaintext: {summary['plaintext_packets']}")
         print(f"  Protocols: {', '.join(summary['protocols_detected']) or 'None'}")
         print(f"  TLS Versions: {', '.join(summary['tls_versions'].keys()) or 'None'}")
-        print(f"  Certificates: {summary['certificate_count']}")
+        
+        if ai_summary:
+            print(f"\n  🤖 AI EXECUTIVE BRIEFING:")
+            print(f"  {ai_summary}")
 
         if findings:
             print(f"\n  {'─'*66}")
-            print(f"  FINDINGS ({len(findings)})")
+            print(f"  FINDINGS & AI INSIGHTS ({len(findings)})")
             print(f"  {'─'*66}")
             for f in findings:
-                icon = {'CRITICAL': '[CRIT]', 'HIGH': '[HIGH]',
-                        'MEDIUM': '[MED] ', 'LOW': '[LOW] '}.get(f['severity'], '[???] ')
+                icon = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢'}.get(f['severity'], '⚪')
                 print(f"\n  {icon} [{f['severity']}] {f['title']}")
-                print(f"     {f['description'][:100]}...")
                 print(f"     Evidence: {f['evidence']}")
+                if f.get('ai_explanation'):
+                    print(f"     🤖 AI Analysis: {f['ai_explanation']}")
         else:
             print(f"\n  ✅ No security issues detected!")
 
