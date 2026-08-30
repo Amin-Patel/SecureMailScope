@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { getAnalysis, getAnalyses } from '../utils/api';
+import { AIExplanation } from '../components/AIExplanation';
 
 // ── Toast notification ────────────────────────────────────────────────────────
 function Toast({ toasts, remove }) {
@@ -524,6 +525,7 @@ export function Analysis() {
               <div><div className="drawer-section-title">Evidence (Packet Reconstruct)</div><div className="code-block">{selectedFinding.evidence || 'No evidence data.'}</div></div>
               {/* backend: f.remediation (not f.reco) */}
               <div><div className="drawer-section-title">Recommendation</div><p style={{ fontSize: 13, color: '#e4e4e7', lineHeight: 1.5 }}>{selectedFinding.remediation || 'No recommendation available.'}</p></div>
+              <AIExplanation finding={selectedFinding} />
             </div>
           );
         })()}
