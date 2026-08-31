@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AIExplanation } from './AIExplanation';
 import { RemediationCard } from './RemediationCard';
+import { EvidenceViewer } from './EvidenceViewer';
 
 /**
  * FindingModal Component
@@ -177,27 +178,7 @@ export function FindingModal({ finding, onClose, activeJobId }) {
 
           {/* 2. Deterministic Evidence Section */}
           {evidence && (
-            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <i className="fa-solid fa-terminal" style={{ color: '#818cf8' }} />
-                <span>Deterministic Evidence</span>
-              </div>
-              <div
-                style={{
-                  fontFamily: 'monospace, var(--font-mono, monospace)',
-                  fontSize: '12px',
-                  color: '#a1a1aa',
-                  background: 'rgba(0, 0, 0, 0.4)',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
-                }}
-              >
-                {evidence}
-              </div>
-            </div>
+            <EvidenceViewer finding={finding} />
           )}
 
           {/* 3. Affected Sessions */}

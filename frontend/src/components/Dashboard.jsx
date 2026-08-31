@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import '../pages/Dashboard.css';
 import { getAnalysisResults, getAnalyses } from '../utils/api';
 import { DashboardCharts } from './DashboardCharts';
@@ -7,6 +7,9 @@ import { AIExplanation } from './AIExplanation';
 import { RemediationCard } from './RemediationCard';
 import { CertificateViewer } from './CertificateViewer';
 import { FindingModal } from './FindingModal';
+import { SessionTimeline } from './SessionTimeline';
+import { ReportExportModal } from './ReportExportModal';
+import { PrintableReport } from './PrintableReport';
 
 const SEVERITY_ORDER = {
   CRITICAL: 1,
@@ -26,6 +29,7 @@ function getRiskColor(score) {
 
 export function Dashboard() {
   const { captureId } = useParams();
+  const navigate = useNavigate();
   const [activeJobId, setActiveJobId] = useState(captureId || null);
   const [recentAnalyses, setRecentAnalyses] = useState([]);
   const [findings, setFindings] = useState([]);
@@ -33,6 +37,9 @@ export function Dashboard() {
   const [selectedFinding, setSelectedFinding] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [rawResults, setRawResults] = useState(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
   
   // Risk object state directly sourced from API
   const [riskInfo, setRiskInfo] = useState({
@@ -64,6 +71,9 @@ export function Dashboard() {
 
         const targetId = captureId || (list.length > 0 ? list[0].capture_id : null);
         setActiveJobId(targetId);
+        if (targetId && !captureId) {
+          navigate(`/dashboard/${targetId}`, { replace: true });
+        }
 
         if (targetId) {
           return getAnalysisResults(targetId);
@@ -73,6 +83,7 @@ export function Dashboard() {
       .then(data => {
         if (!isMounted) return;
         if (data) {
+          setRawResults(data);
           const summary = data.summary || {};
           const fileSizeBytes = data.file_size || 0;
           const totalSizeMB = fileSizeBytes > 0
@@ -192,31 +203,156 @@ export function Dashboard() {
   });
 
   return (
-    <main className="dashboard-container">
-      {/* Finding Detail Modal */}
-      <FindingModal
-        finding={selectedFinding}
-        onClose={() => setSelectedFinding(null)}
-        activeJobId={activeJobId}
-      />
+    <>
+      {rawResults && <PrintableReport results={rawResults} />}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 12, width: '100%', maxWidth: '1200px' }}>
-        <h1 style={{
-          background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          fontSize: 'clamp(24px, 3vw, 36px)',
-          fontWeight: 800,
-          letterSpacing: '-0.03em',
-          margin: 0,
-        }}>Dashboard</h1>
-        {activeJobId && (
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.06)', padding: '6px 14px', borderRadius: 999 }}>
-            Active Capture: <strong style={{ color: '#a5b4fc' }}>#{activeJobId}</strong>
-          </span>
+      <main className="dashboard-container">
+        {/* Report Export Modal */}
+        {rawResults && (
+          <ReportExportModal
+            isOpen={isReportModalOpen}
+            onClose={() => setIsReportModalOpen(false)}
+            results={rawResults}
+          />
         )}
-      </div>
+
+        {/* Finding Detail Modal */}
+        <FindingModal
+          finding={selectedFinding}
+          onClose={() => setSelectedFinding(null)}
+          activeJobId={activeJobId}
+        />
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 12, width: '100%', maxWidth: '1200px' }}>
+          <h1 className="no-print" style={{
+            background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            fontSize: 'clamp(24px, 3vw, 36px)',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            margin: 0,
+          }}>Dashboard</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {activeJobId && (
+              <span className="no-print" style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.06)', padding: '6px 14px', borderRadius: 999 }}>
+                Active Capture: <strong style={{ color: '#a5b4fc' }}>#{activeJobId}</strong>
+              </span>
+            )}
+            {activeJobId && (
+              <div className="no-print" style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
+                  className="btn-action"
+                  style={{
+                    margin: 0,
+                    padding: '6px 16px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#ffffff',
+                    color: '#000000',
+                    border: 'none',
+                  }}
+                >
+                  <i className="fa-solid fa-file-contract" style={{ fontSize: 11 }}></i>
+                  Export Report <i className="fa-solid fa-chevron-down" style={{ fontSize: 9, marginLeft: 2 }} />
+                </button>
+                {reportDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '6px',
+                    background: 'rgba(10, 10, 15, 0.98)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    padding: '6px 0',
+                    width: '240px',
+                    zIndex: 9999,
+                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)'
+                  }}>
+                    <a
+                      href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=html`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setReportDropdownOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        color: 'rgba(255, 255, 255, 0.9)',
+                        fontSize: '12px',
+                        textDecoration: 'none',
+                        transition: 'background 0.2s',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <i className="fa-solid fa-print" style={{ color: '#a5b4fc', width: '14px' }}></i>
+                      <span>View / Print Executive Report</span>
+                    </a>
+                    <a
+                      href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=json`}
+                      download
+                      onClick={() => setReportDropdownOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        color: 'rgba(255, 255, 255, 0.9)',
+                        fontSize: '12px',
+                        textDecoration: 'none',
+                        transition: 'background 0.2s',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <i className="fa-solid fa-download" style={{ color: '#10b981', width: '14px' }}></i>
+                      <span>Download SIEM JSON</span>
+                    </a>
+                    <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+                    <button
+                      onClick={() => {
+                        setReportDropdownOpen(false);
+                        setIsReportModalOpen(true);
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'none',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: '12px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <i className="fa-solid fa-display" style={{ color: '#818cf8', width: '14px' }}></i>
+                      <span>Preview Print Layout (Modal)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
       <div className="dashboard-body">
         {/* Left / Main Panel */}
@@ -315,6 +451,9 @@ export function Dashboard() {
 
           {/* Charts */}
           <DashboardCharts jobId={activeJobId} />
+
+          {/* Interactive Session Timeline */}
+          <SessionTimeline sessions={rawResults?.sessions || []} />
 
           {/* Security Findings Section with AI Explanation & Modal trigger */}
           <div className="glass-card">
@@ -558,6 +697,7 @@ export function Dashboard() {
         </div>
       </div>
     </main>
+    </>
   );
 }
 

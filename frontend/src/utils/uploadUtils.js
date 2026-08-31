@@ -27,13 +27,13 @@ export function validateFile(file) {
     return { valid: false, error: 'No file selected.' };
   }
 
-  const allowedExtensions = ['.pcap', '.pcapng'];
+  const allowedExtensions = ['.pcap', '.pcapng', '.cap'];
   const fileName = file.name.toLowerCase();
   
   const isValidExt = allowedExtensions.some(ext => fileName.endsWith(ext));
   
   if (!isValidExt) {
-    return { valid: false, error: 'Invalid file format. Please upload a .pcap or .pcapng file.' };
+    return { valid: false, error: 'Please select a valid PCAP or PCAPNG file.' };
   }
 
   // Example size limit: 500MB (can be adjusted)

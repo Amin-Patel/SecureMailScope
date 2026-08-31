@@ -1,19 +1,214 @@
 /* HowItWorks component styles */
 .how-it-works-section {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  max-width: 1200px;
+  margin: 4rem auto 1.5rem;
+  padding: 0 1.5rem;
   color: #ffffff;
 }
 
 .how-it-works-section h2 {
   font-family: var(--font-display);
-  font-size: clamp(24px,5vw,36px);
-  margin-bottom: 1rem;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.how-it-works-section p {
+.how-it-works-section p.sub-desc {
   font-family: var(--font-sans);
-  font-size: clamp(14px,1.6vw,16px);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 700px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.5;
+}
+
+/* Group container styling */
+.pipeline-group {
+  background: rgba(10, 10, 15, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  position: relative;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pipeline-group::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  border-top-left-radius: 16px;
+  border-bottom-left-radius: 16px;
+}
+
+.pipeline-group.forensic::before {
+  background: linear-gradient(to bottom, #3b82f6, #a855f7);
+}
+
+.pipeline-group.intelligence::before {
+  background: linear-gradient(to bottom, #d946ef, #10b981);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 1.25rem;
+}
+
+.pipeline-group.forensic .group-header {
+  color: #818cf8;
+}
+
+.pipeline-group.intelligence .group-header {
+  color: #c084fc;
+}
+
+/* Flex rows */
+.flow-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Card Styling */
+.flow-card {
+  flex: 1;
+  background: rgba(15, 15, 25, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 180px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.flow-card:hover {
+  transform: translateY(-2px);
+  background: rgba(20, 20, 35, 0.7);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.card-top {
+  margin-bottom: 12px;
+}
+
+.card-num {
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: monospace;
+  margin-bottom: 6px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.card-title-row i {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.flow-card h3 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.flow-card p {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+  margin: 0 0 10px 0;
+}
+
+/* Extraction badge layer */
+.extraction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 600;
+}
+
+/* Card Technical details label footer */
+.card-tech-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 6px;
+  margin-top: auto;
+  font-family: monospace;
+}
+
+/* Connector arrow styles */
+.connector-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 13px;
+  min-width: 16px;
+  transition: color 0.2s;
+}
+
+.pipeline-group:hover .connector-arrow {
+  color: rgba(129, 140, 248, 0.4);
+}
+
+.down-connector {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.15);
+  margin: 0.5rem 0 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 960px) {
+  .flow-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .connector-arrow {
+    transform: rotate(90deg);
+    margin: 4px 0;
+    min-height: 20px;
+  }
 }

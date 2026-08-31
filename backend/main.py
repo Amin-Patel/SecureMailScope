@@ -12,7 +12,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 
 # Import our analysis pipeline
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
@@ -132,6 +132,390 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Analysis error: {str(e)}"
+        )
+
+
+# ─── UPLOAD DEMO PCAP ───
+@app.post("/api/upload-demo")
+async def upload_demo(demo_name: str):
+    """
+    Load a sample demo PCAP file from backend/test-data and run full security analysis.
+    Returns complete analysis results.
+    """
+    # Resolve relative to main.py directory for absolute reliability
+    demo_file_path = Path(__file__).parent / "test-data" / demo_name
+
+    if not demo_file_path.exists() or not demo_file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Demo capture '{demo_name}' was not found at the expected location."
+        )
+
+    # Read the content
+    try:
+        with open(demo_file_path, "rb") as f:
+            content = f.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read demo file: {str(e)}"
+        )
+
+    # Generate unique capture ID
+    capture_id = uuid.uuid4().hex[:12]
+    file_ext = demo_file_path.suffix.lower()
+    
+    # Save a copy to the uploads directory with a unique ID
+    safe_filename = f"{capture_id}{file_ext}"
+    file_path = UPLOAD_DIR / safe_filename
+
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to copy demo file: {str(e)}"
+        )
+
+    # Run analysis
+    try:
+        analyzer = EmailPCAPAnalyzer(str(file_path))
+        result = analyzer.analyze()
+
+        if not result.get('success'):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Analysis failed: {result.get('error', 'Unknown error')}"
+            )
+
+        # Add metadata
+        result['capture_id'] = capture_id
+        result['upload_timestamp'] = datetime.now().isoformat()
+        result['original_filename'] = demo_name
+        result['file_size'] = len(content)
+        result['status'] = 'completed'
+
+        # Save results to JSON
+        results_file = RESULTS_DIR / f"{capture_id}.json"
+        with open(results_file, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+
+        return JSONResponse(content=result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Analysis error: {str(e)}"
+        )
+
+
+# ─── DEMO ENDPOINTS ───
+@app.get("/api/demo/samples")
+async def get_demo_samples():
+    """Return available demo presets"""
+    return {
+        "samples": [
+            {
+                "id": "vulnerable_smtp",
+                "name": "Vulnerable SMTP Infrastructure",
+                "description": "SMTP capture showing plaintext transmission and missing authentication security layers.",
+                "file": "smtp.pcap",
+                "expected_risk": "HIGH"
+            },
+            {
+                "id": "legacy_ssl3",
+                "name": "Legacy SSL 3.0 Handshake",
+                "description": "SSL 3.0 legacy protocol negotiation, exhibiting vulnerability to the POODLE exploit vector.",
+                "file": "rsasnakeoil2.cap",
+                "expected_risk": "CRITICAL"
+            }
+        ]
+    }
+
+
+@app.post("/api/demo/load/{sample_id}")
+async def load_demo_preset(sample_id: str):
+    """Load sample demo PCAP and run full analysis"""
+    mapping = {
+        "vulnerable_smtp": "smtp.pcap",
+        "legacy_ssl3": "rsasnakeoil2.cap"
+    }
+    
+    if sample_id not in mapping:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Demo sample preset '{sample_id}' not found."
+        )
+        
+    demo_name = mapping[sample_id]
+    return await upload_demo(demo_name)
+
+
+# ─── REPORT ENDPOINT ───
+def generate_html_report(data: dict) -> str:
+    filename = data.get("filename", "N/A")
+    capture_id = data.get("capture_id", "N/A")
+    upload_timestamp = data.get("upload_timestamp", "N/A")
+    summary = data.get("summary", {})
+    ai_summary = data.get("ai_summary", "No AI assessment available.")
+    findings = data.get("findings", [])
+    risk = data.get("risk", {})
+    sessions = data.get("sessions", [])
+    certificates = data.get("certificates", [])
+    
+    # Sort findings by severity priority
+    severity_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    sorted_findings = sorted(findings, key=lambda f: severity_rank.get(f.get("severity", "LOW").upper(), 4))
+    
+    sev_colors = {
+        "CRITICAL": "#ef4444",
+        "HIGH": "#f97316",
+        "MEDIUM": "#eab308",
+        "LOW": "#10b981"
+    }
+
+    findings_html = ""
+    for f in sorted_findings:
+        sev = f.get("severity", "LOW").upper()
+        color = sev_colors.get(sev, "#6b7280")
+        evidence = f.get("evidence", "N/A")
+        ai_exp = f.get("ai_explanation", "N/A")
+        remediation = f.get("remediation", "N/A")
+        findings_html += f"""
+        <div class="finding-card" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 20px; margin-bottom: 20px; page-break-inside: avoid;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 16px; font-weight: 700; color: #111827;">{f.get('title', 'Untitled Finding')}</span>
+                <span style="font-size: 11px; font-weight: 700; color: white; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; background-color: {color};">{sev}</span>
+            </div>
+            <p><strong>Description:</strong> {f.get('description', 'N/A')}</p>
+            <div style="font-family: monospace; background-color: #0f172a; color: #38bdf8; padding: 12px; border-radius: 4px; font-size: 13px; margin: 10px 0; white-space: pre-wrap; word-break: break-all;"><strong>Forensic Evidence:</strong><br/>{evidence}</div>
+            <div style="background-color: #faf5ff; border-left: 3px solid #c084fc; padding: 12px; font-size: 13.5px; margin: 10px 0; color: #581c87;"><strong>🤖 AI Security Interpretation:</strong><br/>{ai_exp}</div>
+            <p><strong>Remediation Action Plan:</strong> {remediation}</p>
+        </div>
+        """
+
+    sessions_html = ""
+    if not sessions:
+        sessions_html = "<tr><td colspan='6' style='text-align:center; color:#6b7280;'>No Email Sessions Detected</td></tr>"
+    else:
+        for s in sessions:
+            enc_status = "Encrypted" if s.get("encrypted") else "Plaintext"
+            enc_color = "#10b981" if s.get("encrypted") else "#ef4444"
+            sessions_html += f"""
+            <tr>
+                <td>{s.get('number', 'N/A')}</td>
+                <td>{s.get('src', 'N/A')}:{s.get('src_port', 'N/A')}</td>
+                <td>{s.get('dst', 'N/A')}:{s.get('dst_port', 'N/A')}</td>
+                <td>{s.get('protocol', 'N/A')}</td>
+                <td>{s.get('packet_count', 0)}</td>
+                <td style="color: {enc_color}; font-weight: bold;">{enc_status}</td>
+            </tr>
+            """
+            
+    certs_html = ""
+    if not certificates:
+        certs_html = "<div style='color: #6b7280; text-align: center; padding: 20px; border: 1px dashed #d1d5db; border-radius: 6px; font-size: 13.5px; margin: 15px 0;'>No X.509 certificates present in cleartext handshake records</div>"
+    else:
+        for c in certificates:
+            self_signed = "Yes" if c.get("is_self_signed") else "No"
+            expired = "Yes" if c.get("is_expired") else "No"
+            certs_html += f"""
+            <div style="border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 15px; padding: 15px; page-break-inside: avoid;">
+                <div style="font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #111827;">{c.get('subject', 'Unknown Subject')}</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr><th style="width: 150px; text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Issuer</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{c.get('issuer', 'N/A')}</td></tr>
+                    <tr><th style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Validity</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{c.get('not_before', 'N/A')} to {c.get('not_after', 'N/A')}</td></tr>
+                    <tr><th style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Serial</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{c.get('serial', 'N/A')}</td></tr>
+                    <tr><th style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Algorithm</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{c.get('signature_algorithm', 'N/A')} ({c.get('public_key_algorithm', 'N/A')} {c.get('key_size', 'N/A')} bits)</td></tr>
+                    <tr><th style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Self-Signed</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{self_signed}</td></tr>
+                    <tr><th style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #4b5563;">Expired</th><td style="text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{expired}</td></tr>
+                </table>
+            </div>
+            """
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SecureMailScope Executive Report - {capture_id}</title>
+    <style>
+        body {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #1f2937;
+            background-color: #ffffff;
+            line-height: 1.5;
+            margin: 0;
+            padding: 40px;
+        }}
+        .header {{
+            border-bottom: 2px solid #374151;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        .header-title {{
+            font-size: 28px;
+            font-weight: 800;
+            margin: 0;
+            color: #111827;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }}
+        .header-subtitle {{
+            font-size: 14px;
+            color: #6b7280;
+            margin: 5px 0 0 0;
+        }}
+        .meta-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }}
+        .meta-item strong {{
+            color: #4b5563;
+        }}
+        h2 {{
+            font-size: 18px;
+            font-weight: 700;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            color: #111827;
+            text-transform: uppercase;
+        }}
+        .briefing {{
+            background-color: #f5f3ff;
+            border-left: 4px solid #8b5cf6;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }}
+        th, td {{
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 13px;
+        }}
+        th {{
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 700;
+        }}
+        .print-btn {{
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #111827;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }}
+        @media print {{
+            .print-btn {{
+                display: none !important;
+            }}
+            body {{
+                padding: 0;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">Print Report</button>
+    
+    <div class="header">
+        <h1 class="header-title">SecureMailScope Forensic Assessment</h1>
+        <p class="header-subtitle">Automated Email Protocol & Traffic Security Analysis</p>
+    </div>
+
+    <div class="meta-grid">
+        <div class="meta-item"><strong>Capture File:</strong> {filename}</div>
+        <div class="meta-item"><strong>Capture ID:</strong> {capture_id}</div>
+        <div class="meta-item"><strong>Report Generated:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
+        <div class="meta-item"><strong>Overall Risk Score:</strong> {risk.get('risk_score', 0)}/100 ({risk.get('risk_level', 'N/A')})</div>
+        <div class="meta-item"><strong>Sessions Detected:</strong> {summary.get('session_count', 0)}</div>
+        <div class="meta-item"><strong>Total Packets:</strong> {summary.get('total_packets', 0)}</div>
+    </div>
+
+    <h2>1. Executive Summary & AI Briefing</h2>
+    <div class="briefing">
+        {ai_summary}
+    </div>
+
+    <h2>2. Prioritized Security Findings</h2>
+    {findings_html if findings else "<p style='color: #6b7280; text-align: center; padding: 20px; border: 1px dashed #d1d5db; border-radius: 6px; font-size: 13.5px; margin: 15px 0;'>No Security Findings identified in this capture.</p>"}
+
+    <h2>3. Captured Email Sessions</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Frame</th>
+                <th>Source Address</th>
+                <th>Destination Address</th>
+                <th>Protocol</th>
+                <th>Packets</th>
+                <th>Encryption</th>
+            </tr>
+        </thead>
+        <tbody>
+            {sessions_html}
+        </tbody>
+    </table>
+
+    <h2>4. X.509 Certificate Inventory</h2>
+    {certs_html}
+
+</body>
+</html>
+"""
+
+
+@app.get("/api/analysis/{capture_id}/report")
+async def get_analysis_report(capture_id: str, format: str = "json"):
+    """Get report for capture_id in html or json format"""
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Analysis results not found for capture_id: {capture_id}"
+        )
+    
+    if format == "json":
+        return FileResponse(
+            path=str(results_file),
+            media_type="application/json",
+            filename=f"SecureMailScope_SIEM_Report_{capture_id}.json"
+        )
+    elif format == "html":
+        try:
+            with open(results_file, "r") as f:
+                data = json.load(f)
+            html_content = generate_html_report(data)
+            return HTMLResponse(content=html_content)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate HTML report: {str(e)}"
+            )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid format. Use 'json' or 'html'."
         )
 
 

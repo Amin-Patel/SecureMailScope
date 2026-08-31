@@ -12,7 +12,7 @@
   --trust-border: rgba(255, 255, 255, 0.4);
   --trust-text: #c4c2c3;
   --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
-  --font-display: "BubbledotICG-FinePos", "Geist Pixel Circle", monospace;
+  --font-display: "BubbledotICG-FinePos", monospace;
   --trust-size: clamp(36px, 4.5vw, 42px);
 }
 
@@ -30,15 +30,6 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Local Geist Pixel font support */
-@font-face {
-  font-family: "Geist Pixel Circle";
-  src: url("fonts/GeistPixel-Circle.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
 }
 
 /* Video Background */
@@ -1296,6 +1287,7 @@ body {
 .tab-btn {
   background: none;
   border: none;
+  outline: none;
   color: var(--muted);
   font-family: var(--font-sans);
   font-weight: 500;
@@ -1305,6 +1297,11 @@ body {
   border-radius: 8px;
   transition: background 0.2s, color 0.2s;
   white-space: nowrap;
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 2px;
 }
 
 .tab-btn:hover {
@@ -1531,6 +1528,7 @@ body {
 .sub-tab-btn {
   background: none;
   border: none;
+  outline: none;
   color: var(--muted);
   font-size: 12px;
   padding: 6px 12px;

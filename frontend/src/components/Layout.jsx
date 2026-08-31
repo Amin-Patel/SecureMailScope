@@ -14,10 +14,10 @@ const NAV_LINKS = [
 ];
 
 const STATS = [
-  { icon: 'fa-bolt', target: 120, decimals: 0, prefix: '<', suffix: 'ms', fallback: '<120ms', label: 'Inference Time' },
-  { icon: 'fa-shield-check', target: 99.99, decimals: 2, prefix: '', suffix: '%', fallback: '99.99%', label: 'Platform Uptime' },
-  { icon: 'fa-clock', target: 24, decimals: 0, prefix: '', suffix: '/7', fallback: '24/7', label: 'Runtime' },
-  { icon: 'fa-layer-group', target: 2.4, decimals: 1, prefix: '', suffix: 'B', fallback: '2.4B', label: 'Ctx Windows' },
+  { icon: 'fa-bolt', target: 250, decimals: 0, prefix: '<', suffix: 'ms', fallback: '<250ms', label: 'Analysis Speed' },
+  { icon: 'fa-shield-check', target: 35, decimals: 0, prefix: '', suffix: '+', fallback: '35+', label: 'RFC Rules Audited' },
+  { icon: 'fa-certificate', target: 100, decimals: 0, prefix: '', suffix: '%', fallback: '100%', label: 'Deterministic Proof' },
+  { icon: 'fa-envelope-open-text', target: 4, decimals: 0, prefix: '', suffix: '', fallback: '4', label: 'Email Protocols' },
 ];
 
 export function Layout({ children }) {
@@ -89,21 +89,21 @@ export function Layout({ children }) {
             className="logo"
             aria-label="Logo Home"
             style={{
-              display: 'grid',
-              placeItems: 'center',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               width: 'clamp(40px, 4.4vw, 46px)',
               height: 'clamp(40px, 4.4vw, 46px)',
               borderRadius: '50%',
               backgroundColor: '#ffffff',
               textDecoration: 'none',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
             }}
           >
             <img
               src="/assets/logo.png"
-              alt=""
-              width="52"
-              height="52"
-              style={{ width: '72%', height: '72%', objectFit: 'contain' }}
+              alt="SecureMailScope Logo"
+              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
             />
           </Link>
 
