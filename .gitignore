@@ -25,3 +25,19 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+uploads/
+
+reports/
+
+dataset/
+
+test/
+test_output.txt
+
+
+frontend/node_modules/
+frontend/dist/
+
+backend/__pycache__/
+backend/venv/

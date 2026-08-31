@@ -1,21 +1,21 @@
 """
 SecureMailScope — FastAPI Backend
-Serves the PCAP analysis pipeline over HTTP
+Serves the PCAP analysis pipeline, AI enrichment, demo presets, and forensic reporting.
 """
 
 import os
 import json
 import uuid
-import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 
-# Import our analysis pipeline
+# Import analysis pipeline & reporting engine
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
+from app.services.report_generator import ReportGenerator
 
 # ─── APP SETUP ───
 app = FastAPI(
@@ -24,10 +24,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS — Allow React frontend to call this API
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Open for development & demo environments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,18 +36,20 @@ app.add_middleware(
 # ─── DIRECTORIES ───
 UPLOAD_DIR = Path("uploads")
 RESULTS_DIR = Path("results")
+TEST_DATA_DIR = Path("test-data")
+
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
+TEST_DATA_DIR.mkdir(exist_ok=True)
 
-# Allowed file extensions
 ALLOWED_EXTENSIONS = {".pcap", ".pcapng", ".cap"}
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 
-# ─── HEALTH CHECK ───
+# ─── 1. HEALTH CHECK ───
 @app.get("/api/health")
 async def health_check():
-    """Check if the API is running"""
+    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "SecureMailScope",
@@ -56,15 +58,10 @@ async def health_check():
     }
 
 
-# ─── UPLOAD & ANALYZE ───
+# ─── 2. UPLOAD & ANALYZE ───
 @app.post("/api/upload")
 async def upload_and_analyze(file: UploadFile = File(...)):
-    """
-    Upload a PCAP file and run full security analysis.
-    Returns complete analysis results.
-    """
-
-    # 1. Validate file extension
+    """Upload a PCAP file and execute the full forensic analysis pipeline."""
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -72,111 +69,119 @@ async def upload_and_analyze(file: UploadFile = File(...)):
             detail=f"Invalid file type '{file_ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # 2. Generate unique capture ID
     capture_id = uuid.uuid4().hex[:12]
-
-    # 3. Save uploaded file
     safe_filename = f"{capture_id}{file_ext}"
     file_path = UPLOAD_DIR / safe_filename
 
     try:
         with open(file_path, "wb") as buffer:
             content = await file.read()
-
-            # Check file size
             if len(content) > MAX_FILE_SIZE:
-                raise HTTPException(
-                    status_code=413,
-                    detail="File too large. Maximum size is 100MB."
-                )
-
+                raise HTTPException(status_code=413, detail="File size exceeds 100MB limit.")
             buffer.write(content)
-
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save file: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-    # 4. Run analysis
-    try:
-        analyzer = EmailPCAPAnalyzer(str(file_path))
-        result = analyzer.analyze()
-
-        if not result.get('success'):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Analysis failed: {result.get('error', 'Unknown error')}"
-            )
-
-        # 5. Add metadata
-        result['capture_id'] = capture_id
-        result['upload_timestamp'] = datetime.now().isoformat()
-        result['original_filename'] = file.filename
-        result['file_size'] = len(content)
-        result['status'] = 'completed'
-
-        # 6. Save results to JSON
-        results_file = RESULTS_DIR / f"{capture_id}.json"
-        with open(results_file, "w") as f:
-            json.dump(result, f, indent=2, default=str)
-
-        # 7. Return results
-        return JSONResponse(content=result)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Analysis error: {str(e)}"
-        )
+    return run_analysis_pipeline(file_path, file.filename, capture_id, len(content))
 
 
-# ─── GET RESULTS ───
-@app.get("/api/analysis/{capture_id}/results")
-async def get_results(capture_id: str):
-    """Retrieve stored analysis results by capture ID"""
+# ─── 3. DEMO SCENARIO PRESETS ───
+# ─── 3. DEMO SCENARIO PRESETS ───
+@app.get("/api/demo/samples")
+async def list_demo_samples():
+    """List available pre-packaged demo scenarios."""
+    samples = [
+        {
+            "id": "vulnerable_smtp",
+            "name": "Vulnerable SMTP Infrastructure",
+            "description": "Cleartext port 25 transmission with missing STARTTLS and exposed email payloads.",
+            "file": "smtp.pcap",
+            "expected_risk": "HIGH / CRITICAL (55/100)"
+        },
+        {
+            "id": "legacy_ssl3",
+            "name": "Legacy SSL 3.0 Handshake (POODLE Target)",
+            "description": "Outdated cryptographic handshake using deprecated SSL 3.0 protocol.",
+            "file": "rsasnakeoil2.cap",
+            "expected_risk": "CRITICAL / DEPRECATED"
+        },
+        {
+            "id": "secure_enterprise",
+            "name": "Compliant Enterprise Posture (SMTPS + IMAPS)",
+            "description": "100% encrypted email transport using modern TLS 1.2/1.3 and AEAD cipher suites.",
+            "file": "secure_mail.pcap",
+            "expected_risk": "CLEAN / LOW (0/100)"
+        }
+    ]
+    return {"samples": samples}
 
-    results_file = RESULTS_DIR / f"{capture_id}.json"
 
-    if not results_file.exists():
+@app.post("/api/demo/load/{sample_id}")
+async def load_demo_sample(sample_id: str):
+    """Instantly analyze a built-in demo PCAP scenario."""
+    sample_map = {
+        "vulnerable_smtp": "smtp.pcap",
+        "legacy_ssl3": "rsasnakeoil2.cap",
+        "secure_enterprise": "secure_mail.pcap"
+    }
+
+    if sample_id not in sample_map:
+        raise HTTPException(status_code=404, detail=f"Unknown demo scenario: {sample_id}")
+
+    filename = sample_map[sample_id]
+    file_path = TEST_DATA_DIR / filename
+
+    if not file_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Analysis not found for capture_id: {capture_id}"
+            detail=f"Demo PCAP file '{filename}' not found in test-data/ directory."
         )
 
-    try:
-        with open(results_file, "r") as f:
-            result = json.load(f)
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read results: {str(e)}"
-        )
+    capture_id = f"demo_{sample_id}_{uuid.uuid4().hex[:6]}"
+    file_size = file_path.stat().st_size
+
+    return run_analysis_pipeline(file_path, filename, capture_id, file_size)
 
 
-# ─── GET STATUS ───
-@app.get("/api/analysis/{capture_id}/status")
-async def get_status(capture_id: str):
-    """Check analysis status"""
-
+# ─── 4. RETRIEVE STORED RESULTS ───
+@app.get("/api/analysis/{capture_id}/results")
+async def get_results(capture_id: str):
+    """Retrieve existing analysis results by capture_id."""
     results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
 
-    if results_file.exists():
-        return {"capture_id": capture_id, "status": "completed"}
+    with open(results_file, "r") as f:
+        return JSONResponse(content=json.load(f))
+
+
+# ─── 5. FORENSIC REPORT GENERATION ───
+@app.get("/api/analysis/{capture_id}/report")
+async def get_report(capture_id: str, format: str = Query("html", regex="^(html|json)$")):
+    """Generate and return an official Forensic Assessment Report in HTML or JSON format."""
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    if format == "json":
+        return JSONResponse(
+            content=data,
+            headers={"Content-Disposition": f"attachment; filename=SecureMailScope_Report_{capture_id}.json"}
+        )
     else:
-        return {"capture_id": capture_id, "status": "not_found"}
+        html_content = ReportGenerator.generate_html_report(data)
+        return HTMLResponse(content=html_content)
 
 
-# ─── LIST ALL ANALYSES ───
+# ─── 6. LIST ALL COMPLETED ANALYSES ───
 @app.get("/api/analyses")
-async def list_analyses():
-    """List all completed analyses"""
-
+async def list_all_analyses():
+    """List summary records of all performed analyses."""
     analyses = []
     for f in RESULTS_DIR.glob("*.json"):
         try:
@@ -188,16 +193,40 @@ async def list_analyses():
                     "risk_score": data.get("summary", {}).get("risk_score"),
                     "risk_level": data.get("summary", {}).get("risk_level"),
                     "timestamp": data.get("upload_timestamp"),
-                    "findings_count": len(data.get("findings", [])),
-                    "session_count": data.get("summary", {}).get("session_count", len(data.get("sessions", []))),
-                    "total_packets": data.get("summary", {}).get("total_packets", 0)
+                    "findings_count": len(data.get("findings", []))
                 })
         except:
             continue
-
-    # Sort latest first by timestamp
-    analyses.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
     return {"analyses": analyses, "total": len(analyses)}
+
+
+# ─── HELPER PIPELINE FUNCTION ───
+def run_analysis_pipeline(file_path: Path, original_filename: str, capture_id: str, file_size: int):
+    """Executes the PCAP analyzer, saves the payload, and returns JSON."""
+    try:
+        analyzer = EmailPCAPAnalyzer(str(file_path))
+        result = analyzer.analyze()
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {result.get('error')}")
+
+        result["capture_id"] = capture_id
+        result["upload_timestamp"] = datetime.now().isoformat()
+        result["original_filename"] = original_filename
+        result["file_size"] = file_size
+        result["status"] = "completed"
+
+        # Save to cache
+        results_file = RESULTS_DIR / f"{capture_id}.json"
+        with open(results_file, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+
+        return JSONResponse(content=result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {str(e)}")
 
 
 if __name__ == "__main__":
