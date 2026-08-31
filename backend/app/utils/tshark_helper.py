@@ -11,11 +11,30 @@ class TSharkHelper:
     """Extract TLS/SSL metadata using tshark"""
     
     @staticmethod
+    def get_tshark_path() -> str:
+        """Find the tshark executable path on the system"""
+        import shutil
+        import platform
+        tshark_in_path = shutil.which("tshark")
+        if tshark_in_path:
+            return tshark_in_path
+        if platform.system() == "Windows":
+            standard_paths = [
+                r"C:\Program Files\Wireshark\tshark.exe",
+                r"C:\Program Files (x86)\Wireshark\tshark.exe",
+            ]
+            for path in standard_paths:
+                if Path(path).exists():
+                    return path
+        return "tshark"
+
+    @staticmethod
     def check_tshark_available() -> bool:
         """Check if tshark is installed and accessible"""
+        tshark_path = TSharkHelper.get_tshark_path()
         try:
             result = subprocess.run(
-                ['tshark', '--version'],
+                [tshark_path, '--version'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -43,8 +62,9 @@ class TSharkHelper:
             raise FileNotFoundError(f"PCAP not found: {pcap_path}")
         
         # Build tshark command
+        tshark_path = TSharkHelper.get_tshark_path()
         cmd = [
-            'tshark',
+            tshark_path,
             '-r', str(pcap_file),
             '-Y', 'ssl.handshake || tls.handshake',
             '-T', 'json',
@@ -149,6 +169,10 @@ class TSharkHelper:
             
             return handshakes
             
+        except FileNotFoundError:
+            raise RuntimeError(
+                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
+            )
         except subprocess.TimeoutExpired:
             raise RuntimeError("tshark extraction timed out")
         except json.JSONDecodeError as e:
@@ -158,9 +182,9 @@ class TSharkHelper:
     def get_protocol_statistics(pcap_path: str) -> Dict:
         """Get protocol distribution statistics"""
         pcap_file = Path(pcap_path)
-        
+        tshark_path = TSharkHelper.get_tshark_path()
         cmd = [
-            'tshark',
+            tshark_path,
             '-r', str(pcap_file),
             '-q',
             '-z', 'io,phs'
@@ -172,6 +196,10 @@ class TSharkHelper:
             return {
                 'raw_output': result.stdout
             }
+        except FileNotFoundError:
+            raise RuntimeError(
+                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
+            )
         except:
             return {}
 

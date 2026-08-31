@@ -114,19 +114,22 @@ export function AIExplanation({ finding }) {
           className="ai-explanation-panel"
           style={{
             marginTop: '10px',
-            padding: '16px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%)',
+            background: 'rgba(99, 102, 241, 0.04)',
             border: '1px solid rgba(168, 85, 247, 0.25)',
             boxShadow: '0 4px 20px rgba(139, 92, 246, 0.08)',
+            overflow: 'hidden',
           }}
         >
+          {/* Distinct Purple/Indigo Accent Banner */}
           <div
             style={{
+              background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%)',
+              borderBottom: '1px solid rgba(168, 85, 247, 0.25)',
+              padding: '10px 16px',
               display: 'flex',
-              justify: 'space-between',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '10px',
               flexWrap: 'wrap',
               gap: '8px',
             }}
@@ -136,60 +139,70 @@ export function AIExplanation({ finding }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                color: '#c084fc',
+                color: '#e9d5ff',
                 fontWeight: 700,
                 fontSize: '13px',
                 letterSpacing: '0.02em',
               }}
             >
-              <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#a855f7' }} />
-              <span>AI Analysis</span>
+              <span>🤖 AI Security Interpretation</span>
             </div>
             {hasExplanation && normalizedConfidence && getConfidenceBadge(normalizedConfidence)}
           </div>
 
-          {hasExplanation ? (
+          <div style={{ padding: '16px' }}>
+            {hasExplanation ? (
+              <div
+                style={{
+                  fontSize: '13px',
+                  lineHeight: '1.6',
+                  color: '#e4e4e7',
+                  margin: '0 0 14px 0',
+                  whiteSpace: 'pre-line',
+                }}
+              >
+                {explanation}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 0',
+                  color: 'rgba(255, 255, 255, 0.65)',
+                  fontSize: '13px',
+                }}
+              >
+                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#a855f7', fontSize: '14px' }} />
+                <span>Generating AI analysis...</span>
+              </div>
+            )}
+
             <div
               style={{
-                fontSize: '13px',
-                lineHeight: '1.6',
-                color: '#e4e4e7',
-                margin: '8px 0 14px',
-                whiteSpace: 'pre-line',
-              }}
-            >
-              {explanation}
-            </div>
-          ) : (
-            <div
-              style={{
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                paddingTop: '10px',
+                marginTop: '10px',
+                fontSize: '11px',
+                color: 'rgba(255, 255, 255, 0.45)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                padding: '12px 0',
-                color: 'rgba(255, 255, 255, 0.65)',
-                fontSize: '13px',
+                justifyContent: 'space-between',
+                gap: '6px',
+                flexWrap: 'wrap',
               }}
             >
-              <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#a855f7', fontSize: '14px' }} />
-              <span>Generating AI analysis...</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <i className="fa-solid fa-circle-info" style={{ fontSize: '11px', color: 'rgba(168, 85, 247, 0.7)' }} />
+                <span>AI-generated interpretation. Verify against evidence.</span>
+              </div>
+              <span style={{ fontSize: '10px', color: 'rgba(168, 85, 247, 0.8)', fontWeight: 600 }}>
+                {finding.ai_source || (finding.ai_confidence === 'DETERMINISTIC_BASELINE'
+                  ? '🛡️ SecureMailScope Offline Intelligence Engine'
+                  : '⚡ Gemini 3.6 Flash')}
+              </span>
             </div>
-          )}
-
-          <div
-            style={{
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              paddingTop: '10px',
-              marginTop: '10px',
-              fontSize: '11px',
-              color: 'rgba(255, 255, 255, 0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <i className="fa-solid fa-circle-info" style={{ fontSize: '11px', color: 'rgba(168, 85, 247, 0.7)' }} />
-            <span>AI-generated interpretation. Verify against evidence.</span>
           </div>
         </div>
       )}

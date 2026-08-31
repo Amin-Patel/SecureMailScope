@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime, timezone
 
+try:
+    from utils.tshark_helper import TSharkHelper
+except ImportError:
+    try:
+        from app.utils.tshark_helper import TSharkHelper
+    except ImportError:
+        from .tshark_helper import TSharkHelper
+
 
 class CertificateAnalyzer:
     """Extract and analyze X.509 certificates from PCAP"""
@@ -23,8 +31,9 @@ class CertificateAnalyzer:
             raise FileNotFoundError(f"PCAP not found: {pcap_path}")
 
         # tshark extracts X.509 fields automatically from TLS Certificate messages
+        tshark_path = TSharkHelper.get_tshark_path()
         cmd = [
-            'tshark',
+            tshark_path,
             '-r', str(pcap_file),
             '-Y', 'tls.handshake.type == 11 || ssl.handshake.type == 11',
             '-T', 'json',
@@ -123,6 +132,10 @@ class CertificateAnalyzer:
 
             return certificates
 
+        except FileNotFoundError:
+            raise RuntimeError(
+                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
+            )
         except subprocess.TimeoutExpired:
             raise RuntimeError("tshark certificate extraction timed out")
         except json.JSONDecodeError:

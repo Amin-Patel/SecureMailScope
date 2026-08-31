@@ -1,0 +1,81 @@
+{
+  "success": true,
+  "capture_id": "52eb2d610381",
+  "filename": "52eb2d610381.pcap",
+  "summary": {
+    "total_packets": 57,
+    "encrypted_packets": 0,
+    "plaintext_packets": 57,
+    "encryption_ratio": 0.0,
+    "protocols_detected": [
+      "SMTP"
+    ],
+    "tls_versions": {},
+    "session_count": 2,
+    "handshake_count": 0,
+    "certificate_count": 0,
+    "risk_score": 55,
+    "risk_level": "HIGH"
+  },
+  "ai_summary": "CRITICAL POSTURE ALERT: Network analysis identified high-severity cryptographic vulnerabilities resulting in a Risk Score of 55/100. Key risks include unencrypted email transmissions and non-compliant protocol negotiations. Immediate implementation of TLS 1.3 and STARTTLS enforcement is strongly advised to prevent data leakage.",
+  "findings": [
+    {
+      "id": "SMS-001",
+      "severity": "CRITICAL",
+      "type": "plaintext_protocol",
+      "title": "Unencrypted Email Protocol Detected",
+      "description": "57 out of 57 email packets (100.0%) are transmitted in plaintext using SMTP. Credentials and email content are visible to any network observer.",
+      "evidence": "57 plaintext packets detected on protocols: SMTP",
+      "remediation": "1. Enable TLS encryption for all email services\n2. Use SMTPS (port 465), IMAPS (port 993), POP3S (port 995)\n3. Enforce STARTTLS for SMTP submission (port 587)\n4. Disable plaintext authentication",
+      "ai_explanation": "Transmitting email traffic over cleartext protocols allows active or passive network eavesdroppers to intercept sensitive communications, exfiltrate credentials via MITM attacks, and violate regulatory mandates (such as GDPR, HIPAA, and PCI DSS).",
+      "ai_confidence": "DETERMINISTIC_BASELINE"
+    },
+    {
+      "id": "SMS-002",
+      "severity": "HIGH",
+      "type": "missing_starttls",
+      "title": "No STARTTLS Negotiation Detected",
+      "description": "2 plaintext SMTP session(s) detected with no TLS upgrade (STARTTLS). Email is transmitted entirely in cleartext.",
+      "evidence": "2 SMTP sessions on port 25/587 without STARTTLS",
+      "remediation": "1. Enable STARTTLS on SMTP server\n2. Configure opportunistic TLS (TLS if available)\n3. Consider MTA-STS policy for enforced TLS\n4. Postfix: smtpd_tls_security_level = may\n5. Dovecot: ssl = required",
+      "ai_explanation": "The mail transfer agent fails to negotiate STARTTLS during SMTP handshake initiation, exposing message routing headers, authentication tokens, and message payloads across untrusted intermediate relays.",
+      "ai_confidence": "DETERMINISTIC_BASELINE"
+    }
+  ],
+  "risk": {
+    "risk_score": 55,
+    "risk_level": "HIGH",
+    "finding_score": 25,
+    "encryption_penalty": 30.0,
+    "critical_count": 1,
+    "high_count": 1,
+    "medium_count": 0,
+    "low_count": 0
+  },
+  "sessions": [
+    {
+      "id": "session_1",
+      "protocol": "SMTP",
+      "src": "10.10.1.4:1470",
+      "dst": "74.53.140.153:25",
+      "packet_count": 53,
+      "encrypted": false,
+      "tls_versions": []
+    },
+    {
+      "id": "session_2",
+      "protocol": "SMTP",
+      "src": "192.168.1.1:1470",
+      "dst": "10.10.1.4:25",
+      "packet_count": 4,
+      "encrypted": false,
+      "tls_versions": []
+    }
+  ],
+  "certificates": [],
+  "tls_handshakes": [],
+  "upload_timestamp": "2026-08-31T20:43:20.687177",
+  "original_filename": "smtp.pcap",
+  "file_size": 27850,
+  "status": "completed"
+}

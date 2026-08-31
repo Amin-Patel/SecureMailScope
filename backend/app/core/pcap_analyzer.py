@@ -143,8 +143,9 @@ class EmailPCAPAnalyzer:
             "tcp.port==2525 || tcp.port==110 || tcp.port==995 || "
             "tcp.port==143 || tcp.port==993"
         )
+        tshark_path = TSharkHelper.get_tshark_path()
         cmd = [
-            'tshark',
+            tshark_path,
             '-r', str(self.pcap_path),
             '-Y', filter_expr,
             '-T', 'json',
@@ -190,6 +191,10 @@ class EmailPCAPAnalyzer:
                         'length': int(layers.get('frame.len', ['0'])[0]),
                         'encrypted': protocol in ['SMTPS', 'IMAPS', 'POP3S']
                     })
+        except FileNotFoundError:
+            raise RuntimeError(
+                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
+            )
         except Exception as e:
             print(f"       [!] Packet extraction error: {e}")
 

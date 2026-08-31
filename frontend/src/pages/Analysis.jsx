@@ -289,19 +289,31 @@ export function Analysis() {
             Analysis Workspace &bull; Job ID #{currentCaptureId} &bull; Risk Score {score}/100
           </div>
         </div>
-        {/* Dynamic score circle */}
-        <div className="score-badge">
-          <div className="score-circle-sm" style={{
-            background: `rgba(${riskColor === '#ef4444' ? '239,68,68' : riskColor === '#f59e0b' ? '245,158,11' : '16,185,129'},0.12)`,
-            borderColor: riskColor,
-            boxShadow: `0 0 14px ${riskColor}55`,
-            color: '#fff',
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '15px',
+            fontWeight: 800,
+            background: `rgba(${riskColor === '#ef4444' ? '239,68,68' : riskColor === '#f59e0b' ? '245,158,11' : '16,185,129'}, 0.15)`,
+            border: `2px solid ${riskColor}`,
+            boxShadow: `0 0 12px ${riskColor}44`,
+            color: '#ffffff',
           }}>
             {score}
           </div>
-          <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>
-            Risk Score
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', lineHeight: 1.2 }}>
+              Risk Score
+            </span>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+              out of 100
+            </span>
+          </div>
         </div>
       </div>
 

@@ -177,9 +177,7 @@ export function Landing() {
               <img
                 src="/assets/logo.png"
                 alt="SecureMailScope"
-                width="26"
-                height="26"
-                style={{ width: '68%', height: '68%', objectFit: 'contain' }}
+                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
               />
             </div>
             <span
@@ -213,7 +211,7 @@ export function Landing() {
               About
             </button>
             <button
-              onClick={() => scrollToSection('how-it-works')}
+              onClick={() => navigate('/workspace#how-it-works')}
               style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: '14px', cursor: 'pointer', fontWeight: 500 }}
               onMouseEnter={(e) => (e.target.style.color = '#ffffff')}
               onMouseLeave={(e) => (e.target.style.color = 'rgba(255,255,255,0.7)')}
@@ -305,7 +303,7 @@ export function Landing() {
               About
             </button>
             <button
-              onClick={() => scrollToSection('how-it-works')}
+              onClick={() => navigate('/workspace#how-it-works')}
               style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '16px', textAlign: 'left', cursor: 'pointer' }}
             >
               How It Works
