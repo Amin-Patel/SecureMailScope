@@ -168,3 +168,38 @@ export async function loadDemo(sampleId) {
   }
 }
 
+/**
+ * Delete a specific analysis record by capture ID.
+ * @param {string} captureId 
+ * @returns {Promise<Object>}
+ */
+export async function deleteAnalysis(captureId) {
+  try {
+    const response = await apiClient.delete(`/analysis/${encodeURIComponent(captureId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Batch delete multiple analysis records by array of capture IDs.
+ * @param {Array<string>} captureIds 
+ * @returns {Promise<Object>}
+ */
+export async function deleteAnalysesBatch(captureIds) {
+  try {
+    const response = await apiClient.post('/analyses/delete-batch', { capture_ids: captureIds });
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+

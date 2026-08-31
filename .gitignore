@@ -26,18 +26,22 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Runtime / generated files
 uploads/
-
 reports/
-
 dataset/
-
 test/
 test_output.txt
 
+# PCAP captures
+*.pcap
+*.pcapng
+*.cap
 
+# Frontend
 frontend/node_modules/
 frontend/dist/
 
+# Backend
 backend/__pycache__/
 backend/venv/

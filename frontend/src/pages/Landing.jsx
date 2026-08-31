@@ -211,7 +211,7 @@ export function Landing() {
               About
             </button>
             <button
-              onClick={() => navigate('/workspace#how-it-works')}
+              onClick={() => scrollToSection('how-it-works')}
               style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: '14px', cursor: 'pointer', fontWeight: 500 }}
               onMouseEnter={(e) => (e.target.style.color = '#ffffff')}
               onMouseLeave={(e) => (e.target.style.color = 'rgba(255,255,255,0.7)')}
@@ -303,7 +303,7 @@ export function Landing() {
               About
             </button>
             <button
-              onClick={() => navigate('/workspace#how-it-works')}
+              onClick={() => scrollToSection('how-it-works')}
               style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '16px', textAlign: 'left', cursor: 'pointer' }}
             >
               How It Works
