@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 function Toast({ message, onDone }) {
   useEffect(() => {
@@ -23,17 +24,35 @@ function Toast({ message, onDone }) {
 }
 
 export function Settings() {
-  const [username, setUsername] = useState(() => localStorage.getItem('sms_username') || 'SecurityAnalyst');
-  const [email, setEmail]       = useState(() => localStorage.getItem('sms_email')    || 'analyst@securemailscope.com');
+  const { user, profile, updateProfile, signOut } = useAuth();
+  const [username, setUsername] = useState(() => profile?.full_name || user?.user_metadata?.full_name || localStorage.getItem('sms_username') || 'Security Analyst');
+  const [email, setEmail]       = useState(() => user?.email || profile?.email || localStorage.getItem('sms_email') || 'analyst@securemailscope.com');
   const [toast, setToast]       = useState(null);
+  const [saving, setSaving]     = useState(false);
 
-  const initials = username.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  useEffect(() => {
+    if (profile?.full_name) {
+      setUsername(profile.full_name);
+    }
+    if (user?.email) {
+      setEmail(user.email);
+    }
+  }, [profile, user]);
 
-  const handleSave = (e) => {
+  const initials = (username || 'Security Analyst').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+  const handleSave = async (e) => {
     e.preventDefault();
-    localStorage.setItem('sms_username', username);
-    localStorage.setItem('sms_email', email);
-    setToast('Profile saved successfully!');
+    setSaving(true);
+    try {
+      await updateProfile({ fullName: username });
+      localStorage.setItem('sms_username', username);
+      setToast('Profile updated successfully!');
+    } catch (err) {
+      setToast('Failed to update profile.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const fieldStyle = {
@@ -55,9 +74,9 @@ export function Settings() {
           backgroundClip: 'text',
           fontSize: 'clamp(22px, 3vw, 32px)', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: 6,
         }}>
-          Settings
+          Settings &amp; Account
         </h2>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Manage your profile and platform preferences</p>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Manage your user identity and platform preferences</p>
       </div>
 
       {/* Profile Card */}
@@ -80,15 +99,20 @@ export function Settings() {
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{username}</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{email}</div>
+            {user?.id && (
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace', marginTop: 4 }}>
+                ID: {user.id}
+              </div>
+            )}
           </div>
         </div>
 
         <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
-          Profile Settings
+          Profile Details
         </div>
         <form onSubmit={handleSave}>
           <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Username</label>
+            <label style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Full Name / Display Name</label>
             <input
               style={fieldStyle}
               onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
@@ -98,19 +122,17 @@ export function Settings() {
             />
           </div>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Email Address</label>
+            <label style={{ display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Email Address (Managed by Supabase Auth)</label>
             <input
-              style={fieldStyle}
-              onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
-              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
-              type="email" value={email}
-              onChange={e => setEmail(e.target.value)}
+              style={{ ...fieldStyle, opacity: 0.7, cursor: 'not-allowed' }}
+              type="email" value={email} disabled
             />
           </div>
           <button
             type="submit"
+            disabled={saving}
             style={{
-              padding: '11px 28px', borderRadius: 10, border: 'none', cursor: 'pointer',
+              padding: '11px 28px', borderRadius: 10, border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               color: '#fff', fontSize: 14, fontWeight: 700,
               boxShadow: '0 4px 16px rgba(99,102,241,0.4)',
@@ -119,7 +141,7 @@ export function Settings() {
             onMouseEnter={e => { e.target.style.transform = 'translateY(-2px)'; e.target.style.boxShadow = '0 6px 24px rgba(99,102,241,0.6)'; }}
             onMouseLeave={e => { e.target.style.transform = ''; e.target.style.boxShadow = '0 4px 16px rgba(99,102,241,0.4)'; }}
           >
-            Save Changes
+            {saving ? 'Saving...' : 'Save Profile'}
           </button>
         </form>
       </div>
@@ -137,6 +159,7 @@ export function Settings() {
           { icon: 'fa-code-branch',    label: 'Software Version',    value: 'SecureMailScope v1.0.4-beta' },
           { icon: 'fa-microchip',      label: 'Core Engine',         value: 'Zeek / tshark v4.2.1' },
           { icon: 'fa-shield-halved',  label: 'Risk Scoring Rules',  value: 'Ruleset v2.10.4' },
+          { icon: 'fa-database',       label: 'Auth Provider',       value: 'Supabase Auth (PostgreSQL 17)' },
           { icon: 'fa-circle-dot',     label: 'Status',              value: 'Operational', green: true },
         ].map(({ icon, label, value, green }) => (
           <div key={label} style={{
@@ -168,10 +191,7 @@ export function Settings() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            localStorage.removeItem('sms_auth');
-            window.location.href = '/login';
-          }}
+          onClick={() => signOut()}
           style={{
             padding: '9px 20px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer',
             background: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: 13, fontWeight: 600,
@@ -188,3 +208,4 @@ export function Settings() {
     </main>
   );
 }
+

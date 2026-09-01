@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useStatsCounter } from '../hooks/useStatsCounter';
+import { useAuth } from '../context/AuthContext';
 
 const VIDEO_SRC =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4';
@@ -21,6 +22,7 @@ const STATS = [
 ];
 
 export function Layout({ children }) {
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const footerRef = useRef(null);
@@ -92,18 +94,18 @@ export function Layout({ children }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 'clamp(40px, 4.4vw, 46px)',
-              height: 'clamp(40px, 4.4vw, 46px)',
-              borderRadius: '50%',
-              backgroundColor: '#ffffff',
+              width: 'clamp(38px, 4vw, 44px)',
+              height: 'clamp(38px, 4vw, 44px)',
+              borderRadius: '10px',
+              backgroundColor: 'transparent',
               textDecoration: 'none',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+              overflow: 'hidden',
             }}
           >
             <img
               src="/assets/logo.png"
               alt="SecureMailScope Logo"
-              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           </Link>
 
@@ -119,13 +121,42 @@ export function Layout({ children }) {
             ))}
           </nav>
 
-          <Link
-            to="/settings"
-            className={`sign-in-btn ${isSettings ? 'active' : ''}`}
-            style={{ textDecoration: 'none' }}
-          >
-            Settings
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Link
+              to="/settings"
+              className={`sign-in-btn ${isSettings ? 'active' : ''}`}
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <i className="fa-solid fa-gear" style={{ fontSize: '11px' }} />
+              Settings
+            </Link>
+
+            {user && (
+              <button
+                onClick={() => signOut()}
+                title={`Sign out (${user.email})`}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#f87171',
+                  borderRadius: '999px',
+                  padding: '7px 14px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)')}
+              >
+                <i className="fa-solid fa-right-from-bracket" style={{ fontSize: '11px' }} />
+                <span>Exit</span>
+              </button>
+            )}
+          </div>
 
           <button
             className={`burger-btn ${menuOpen ? 'open' : ''}`}

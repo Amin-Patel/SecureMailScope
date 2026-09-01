@@ -166,18 +166,18 @@ export function Landing() {
               style={{
                 width: '38px',
                 height: '38px',
-                borderRadius: '50%',
-                backgroundColor: '#ffffff',
+                borderRadius: '10px',
+                backgroundColor: 'transparent',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                overflow: 'hidden',
               }}
             >
               <img
                 src="/assets/logo.png"
                 alt="SecureMailScope"
-                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>
             <span

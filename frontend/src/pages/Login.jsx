@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const VIDEO_SRC =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260808_112712_da9d53df-6d27-4b12-bdf6-aa9dc2622bdf.mp4';
 
 export function Login() {
   const navigate = useNavigate();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
 
   // Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState('signin');
@@ -21,6 +23,7 @@ export function Login() {
   // States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const validateEmail = (val) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
@@ -29,6 +32,7 @@ export function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -63,21 +67,22 @@ export function Login() {
     setLoading(true);
 
     try {
-      // Simulate authenticating against SecureMailScope security platform
-      await new Promise((resolve) => setTimeout(resolve, 750));
-
-      // Persist authenticated state
-      localStorage.setItem('sms_auth', 'true');
-      localStorage.setItem('sms_email', trimmedEmail);
-      localStorage.setItem(
-        'sms_username',
-        authMode === 'signup' && fullName.trim() ? fullName.trim() : trimmedEmail.split('@')[0]
-      );
-
-      // Redirect to the dashboard
-      navigate('/analysis', { replace: true });
+      if (authMode === 'signup') {
+        await signUp({ email: trimmedEmail, password, fullName: fullName.trim() });
+        // After signup, redirect to sign-in page
+        setSuccessMessage('Account created successfully! Please sign in with your credentials.');
+        setAuthMode('signin');
+        setPassword('');
+        setConfirmPassword('');
+        setFullName('');
+      } else {
+        await signIn({ email: trimmedEmail, password });
+        localStorage.setItem('sms_auth', 'true');
+        localStorage.setItem('sms_email', trimmedEmail);
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err) {
-      setError('Unable to sign in. Check your email and password and try again.');
+      setError(err.message || 'Unable to sign in right now. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -85,25 +90,13 @@ export function Login() {
 
   const handleGoogleAuth = async () => {
     setError(null);
+    setSuccessMessage(null);
     setLoading(true);
 
     try {
-      // Integration point for OAuth provider
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      // Check if external OAuth config is active; if not configured, show clear notice
-      const oauthConfigured = false;
-
-      if (!oauthConfigured) {
-        setError('Google sign-in is not yet configured for this workspace. Please sign in with email.');
-        setLoading(false);
-        return;
-      }
-
-      localStorage.setItem('sms_auth', 'true');
-      navigate('/analysis', { replace: true });
+      await signInWithGoogle();
     } catch (err) {
-      setError('Google sign-in was unsuccessful. Please try again.');
+      setError(err.message || 'Google sign-in is not yet configured for this workspace. Please sign in with email.');
       setLoading(false);
     }
   };
@@ -174,22 +167,20 @@ export function Login() {
           >
             <div
               style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                backgroundColor: '#ffffff',
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                backgroundColor: 'transparent',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                overflow: 'hidden',
               }}
             >
               <img
                 src="/assets/logo.png"
                 alt="SecureMailScope Logo"
-                width="24"
-                height="24"
-                style={{ width: '68%', height: '68%', objectFit: 'contain' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>
             <span
@@ -437,6 +428,28 @@ export function Login() {
               </button>
             </div>
 
+            {/* Success Message Banner */}
+            {successMessage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.14)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: '#34d399',
+                  fontSize: '13px',
+                  lineHeight: 1.45,
+                  marginBottom: '18px',
+                }}
+              >
+                <i className="fa-solid fa-circle-check" style={{ marginTop: '2px', color: '#10b981', flexShrink: 0 }} />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
             {/* Error Message Banner */}
             {error && (
               <div
@@ -592,8 +605,8 @@ export function Login() {
                   </label>
                   {authMode === 'signin' && (
                     <span
-                      style={{ fontSize: '11px', color: '#a5b4fc', cursor: 'pointer' }}
-                      onClick={() => setError('Password reset instructions will be sent to your email.')}
+                      title="Password reset is coming later"
+                      style={{ fontSize: '11px', color: 'rgba(165, 180, 252, 0.45)', cursor: 'default' }}
                     >
                       Forgot password?
                     </span>
