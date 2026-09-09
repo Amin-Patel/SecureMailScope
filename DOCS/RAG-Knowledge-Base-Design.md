@@ -83,11 +83,14 @@ to wire a screen to.
 
 ## What was verified, and what wasn't
 
-Verified end-to-end against a running local server (offline mode, no API
-key available in the dev environment this was built in):
+First pass was verified in isolation (offline mode, no API key, no TShark
+installed in the dev environment this was built in):
 
 - All 8 seed docs index correctly on startup.
-- Retrieval correctly matches findings to the right reference doc.
+- Retrieval correctly matches synthetic findings to the right reference doc,
+  called directly against `explain_finding` — not through a real analysis
+  request, since the PCAP pipeline itself needs TShark and none was
+  installed yet.
 - Found and fixed a real bug in the process: naive paragraph chunking was
   splitting Markdown section headings (`## Overview`, etc.) into their own
   near-empty chunks, which could become the top "match" instead of actual
@@ -96,11 +99,29 @@ key available in the dev environment this was built in):
 - The full gap → propose (fails cleanly with HTTP 503 when no API key is
   configured) → approve → reject loop, exercised via live HTTP calls.
 - The existing `backend/tests/test_e2e_pipeline.py` suite — no regressions
-  beyond pre-existing failures caused by TShark/Wireshark not being
-  installed in the dev environment (unrelated to this feature; the PCAP
-  pipeline itself needs it regardless of RAG).
+  beyond the (at the time) missing-TShark failures.
 
-**Not verified**: the online path (real Gemini embeddings + AI-drafted
+**Follow-up pass — genuine end-to-end confirmation.** Wireshark (bundles
+TShark) was installed on the dev machine specifically to close the gap above
+and actually run a real PCAP through the full pipeline rather than testing
+the RAG layer in isolation:
+
+- `POST /api/demo/load/vulnerable_smtp` against the live server on
+  `feature/rag-knowledge-base` returned a real analysis: 2 findings, risk
+  score 55/100.
+- The `missing_starttls` finding came back with `ai_reference` populated
+  with real content retrieved live from the knowledge base (RFC 3207/2595/
+  8314 material) — confirming the RAG grounding fires inside the actual
+  request path, not just in a synthetic test.
+- The `plaintext_protocol` finding correctly came back with
+  `ai_reference: null` and was logged to `/api/knowledge/gaps` — the
+  0.35 confidence threshold did its job rather than forcing a weak match
+  through.
+- Ran twice; the gap counter for `plaintext_protocol` went 1 → 2
+  consistently across runs, confirming the bookkeeping in
+  `knowledge_store/gaps.json` is sound.
+
+**Still not verified**: the online path (real Gemini embeddings + AI-drafted
 proposals) — no `GEMINI_API_KEY` was available in the environment this was
 built in. The offline lexical fallback is intentionally crude (a hashing
 bag-of-words, not real semantic search); in testing it correctly identified
@@ -110,6 +131,26 @@ becomes a logged gap rather than false-confidence grounding. Whoever has a
 real key should smoke-test the `propose` endpoint and confirm online
 embedding quality clears the threshold more consistently.
 
+## Known issue found along the way (not a RAG bug — a Windows/console bug)
+
+Getting the real end-to-end run working surfaced a **separate, pre-existing
+bug** unrelated to this feature: `pcap_analyzer.py`'s `_print_report()`
+prints a 🤖 emoji to the console. On a Windows console using the default
+cp1252 code page, that `print()` raises `UnicodeEncodeError` — and because
+it happens *after* the analysis has already fully succeeded but *inside* the
+same `try` block, the outer exception handler reports the entire analysis as
+failed (HTTP 500) even though `findings`, `risk`, and `ai_summary` were all
+correctly computed. This has likely been silently swallowing successful
+Windows-console analyses for a while; it just hadn't been hit here before
+because TShark wasn't installed, so no analysis had gotten far enough to
+reach that line.
+
+Not fixed in `feature/rag-knowledge-base` (out of scope for that branch —
+worked around locally for testing by setting `PYTHONIOENCODING=utf-8`), but
+worth a dedicated fix: either reconfigure stdout to UTF-8 at process start
+(`sys.stdout.reconfigure(encoding="utf-8")` in `main.py`), or drop the emoji
+from the print statements.
+
 ## Also fixed along the way
 
 Two pre-existing gaps this feature depended on, fixed in the same branch:
@@ -118,3 +159,11 @@ Two pre-existing gaps this feature depended on, fixed in the same branch:
   even though `gemini_service.py` already imported them.
 - `pcap_analyzer.py` was discarding `ai_source` (and now `ai_reference`)
   from the AI service's response instead of attaching it to the finding.
+
+## Local dev setup note
+
+Running the full pipeline locally (not just the RAG layer) requires
+Wireshark/TShark installed and on `PATH` or at one of the paths
+`tshark_helper.py` checks (`C:\Program Files\Wireshark\tshark.exe` on
+Windows). Without it, `/api/upload` and `/api/demo/load/*` will 500 at the
+TLS-handshake-extraction step, before any of the RAG code even runs.
