@@ -19,6 +19,11 @@ try:
 except ImportError:
     HAS_GENAI = False
 
+from services.knowledge_base import get_knowledge_base
+from services.knowledge_ingestion import record_gap
+
+GAP_MATCH_THRESHOLD = 0.35  # below this cosine similarity, treat KB coverage as insufficient
+
 
 class GeminiSecurityAssistant:
     """Contextual security assistant using google-genai and gemini-3.6-flash."""
@@ -65,10 +70,36 @@ class GeminiSecurityAssistant:
         print("[!] All online model queries failed. Using Offline Intelligence Engine.")
         self.is_online = False
 
+    def _retrieve_grounding(self, finding: Dict) -> List[Dict]:
+        """Query the knowledge base for reference material relevant to this finding.
+        Records a coverage gap (for later review/drafting) when nothing clears the threshold."""
+        ftype = finding.get("type", "")
+        query_text = f"{finding.get('title', '')} {finding.get('description', '')}".strip()
+        if not query_text:
+            return []
+
+        kb = get_knowledge_base()
+        candidates = kb.query(query_text, finding_type=ftype, top_k=2)
+        strong_matches = [c for c in candidates if c["score"] >= GAP_MATCH_THRESHOLD]
+
+        if not strong_matches:
+            record_gap(ftype, finding.get("title", ""))
+
+        return strong_matches
+
     def explain_finding(self, finding: Dict) -> Dict:
-        """Generate contextual threat explanation and risk impact."""
+        """Generate contextual threat explanation and risk impact, grounded in the knowledge base."""
+        references = self._retrieve_grounding(finding)
+
         if self.is_online and self.client:
             try:
+                reference_block = ""
+                if references:
+                    reference_block = (
+                        "\n\nGrounding Reference Material (use this to inform your explanation, "
+                        "do not simply repeat it verbatim):\n" + "\n---\n".join(r["text"] for r in references)
+                    )
+
                 prompt = (
                     "You are a Principal Cybersecurity Analyst specialized in email infrastructure, PKI, and transport cryptography. "
                     "Analyze this security finding extracted from network packet forensics:\n\n"
@@ -76,7 +107,8 @@ class GeminiSecurityAssistant:
                     f"Severity: {finding.get('severity')}\n"
                     f"Type: {finding.get('type')}\n"
                     f"Description: {finding.get('description')}\n"
-                    f"Forensic Evidence: {finding.get('evidence')}\n\n"
+                    f"Forensic Evidence: {finding.get('evidence')}\n"
+                    f"{reference_block}\n\n"
                     "Respond with a JSON object containing exactly two fields:\n"
                     "1. 'ai_explanation': A high-impact 2-sentence explanation covering technical attack vectors (e.g. MITM, credential harvesting, protocol downgrade) and organizational compliance impact.\n"
                     "2. 'ai_confidence': 'HIGH'\n"
@@ -101,13 +133,14 @@ class GeminiSecurityAssistant:
                 return {
                     "ai_explanation": parsed.get("ai_explanation", self._fallback_explanation(finding)),
                     "ai_confidence": "HIGH",
-                    "ai_source": f"Google Gemini ({self.model_name})"
+                    "ai_source": f"Google Gemini ({self.model_name})",
+                    "ai_reference": references[0]["text"] if references else None
                 }
             except Exception as e:
                 print(f"[!] AI generation fallback for {finding.get('id')}: {e}")
-                return self._offline_enrich_finding(finding)
+                return self._offline_enrich_finding(finding, references=references)
         else:
-            return self._offline_enrich_finding(finding)
+            return self._offline_enrich_finding(finding, references=references)
 
     def generate_executive_summary(self, summary: Dict, findings: List[Dict], risk: Dict) -> str:
         """Generate a CISO-level executive summary."""
@@ -135,11 +168,15 @@ class GeminiSecurityAssistant:
 
     # ─── OFFLINE DETERMINISTIC INTELLIGENCE ENGINE ───
 
-    def _offline_enrich_finding(self, finding: Dict) -> Dict:
+    def _offline_enrich_finding(self, finding: Dict, references: Optional[List[Dict]] = None) -> Dict:
+        if references is None:
+            references = self._retrieve_grounding(finding)
+
         return {
             "ai_explanation": self._fallback_explanation(finding),
             "ai_confidence": "DETERMINISTIC_BASELINE",
-            "ai_source": "SecureMailScope-Intelligence-Engine"
+            "ai_source": "SecureMailScope-Intelligence-Engine",
+            "ai_reference": references[0]["text"] if references else None
         }
 
     def _fallback_explanation(self, finding: Dict) -> str:

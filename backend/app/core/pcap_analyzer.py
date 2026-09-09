@@ -98,6 +98,8 @@ class EmailPCAPAnalyzer:
                 ai_meta = self.ai_assistant.explain_finding(finding)
                 finding['ai_explanation'] = ai_meta.get('ai_explanation', '')
                 finding['ai_confidence'] = ai_meta.get('ai_confidence', 'HIGH')
+                finding['ai_source'] = ai_meta.get('ai_source', '')
+                finding['ai_reference'] = ai_meta.get('ai_reference')
 
             ai_summary = self.ai_assistant.generate_executive_summary(
                 analysis_data['summary'], findings, risk
