@@ -1,9 +1,10 @@
 """
 Security Rule Engine for SecureMailScope
-Deterministic security checks against extracted PCAP data
+Deterministic security checks against extracted PCAP data and certificate chains.
+Preserves forensic evidence references (frame, stream, SNI, endpoints).
 """
 
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 from core.cipher_suites import lookup as lookup_cipher_suite
 
@@ -22,7 +23,7 @@ MIN_KEY_SIZES = {
 
 
 class SecurityEngine:
-    """Run deterministic security checks on PCAP analysis data"""
+    """Run deterministic security checks on PCAP analysis data and PKI chains"""
 
     def __init__(self, analysis_data: Dict):
         """
@@ -31,13 +32,14 @@ class SecurityEngine:
         - sessions: reconstructed email sessions
         - tls_handshakes: TLS handshake metadata
         - certificates: extracted X.509 certificates
+        - certificate_chains: multi-tier certificate chain analyses
         """
         self.data = analysis_data
         self.findings = []
         self.finding_counter = 0
 
     def run_all_checks(self) -> List[Dict]:
-        """Run all security checks and return findings"""
+        """Run all deterministic security and PKI checks"""
         self.check_plaintext_protocols()
         self.check_ssl3()
         self.check_tls10()
@@ -45,25 +47,29 @@ class SecurityEngine:
         self.check_weak_ciphers()
         self.check_weak_signatures()
         self.check_key_sizes()
-        self.check_expired_certificates()
-        self.check_self_signed_certificates()
         self.check_missing_starttls()
         self.check_forward_secrecy()
+        self.check_certificate_chains()
 
         return self.findings
 
     def _add_finding(self, severity: str, finding_type: str,
                      title: str, description: str,
-                     evidence: str, remediation: str):
-        """Add a finding to the list"""
+                     evidence: str, remediation: str,
+                     structured_evidence: Optional[Dict[str, Any]] = None,
+                     rule_id: Optional[str] = None):
+        """Add a finding to the list with machine-readable structured evidence"""
         self.finding_counter += 1
+        fid = f"SMS-{self.finding_counter:03d}"
         self.findings.append({
-            'id': f"SMS-{self.finding_counter:03d}",
+            'id': fid,
+            'rule_id': rule_id or finding_type.upper(),
             'severity': severity,
             'type': finding_type,
             'title': title,
             'description': description,
             'evidence': evidence,
+            'structured_evidence': structured_evidence or {},
             'remediation': remediation
         })
 
@@ -83,6 +89,7 @@ class SecurityEngine:
                 self._add_finding(
                     severity='CRITICAL',
                     finding_type='plaintext_protocol',
+                    rule_id='PROTO_CLEARTEXT_DETECTED',
                     title='Unencrypted Email Protocol Detected',
                     description=(
                         f"{plaintext_count} out of {total} email packets "
@@ -95,6 +102,11 @@ class SecurityEngine:
                         f"{plaintext_count} plaintext packets detected on "
                         f"protocols: {', '.join(plaintext_protocols)}"
                     ),
+                    structured_evidence={
+                        'plaintext_packets': plaintext_count,
+                        'total_packets': total,
+                        'protocols': plaintext_protocols
+                    },
                     remediation=(
                         "1. Enable TLS encryption for all email services\n"
                         "2. Use SMTPS (port 465), IMAPS (port 993), POP3S (port 995)\n"
@@ -111,6 +123,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='deprecated_protocol',
+                rule_id='PROTO_SSL3_DEPRECATED',
                 title='SSL 3.0 Detected (POODLE Vulnerable)',
                 description=(
                     f"SSL 3.0 was detected in {count} handshake(s). "
@@ -118,6 +131,7 @@ class SecurityEngine:
                     f"and has been deprecated since RFC 7568 (2015)."
                 ),
                 evidence=f"{count} TLS handshakes using SSL 3.0",
+                structured_evidence={'version': 'SSL 3.0', 'count': count},
                 remediation=(
                     "1. Disable SSL 3.0 on all mail servers immediately\n"
                     "2. Configure minimum TLS version to 1.2\n"
@@ -133,6 +147,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='deprecated_protocol',
+                rule_id='PROTO_TLS10_DEPRECATED',
                 title='TLS 1.0 Detected (Deprecated)',
                 description=(
                     f"TLS 1.0 was detected in {count} handshake(s). "
@@ -140,6 +155,7 @@ class SecurityEngine:
                     f"non-compliant with PCI DSS 3.2+."
                 ),
                 evidence=f"{count} TLS handshakes using TLS 1.0",
+                structured_evidence={'version': 'TLS 1.0', 'count': count},
                 remediation=(
                     "1. Disable TLS 1.0 on all mail servers\n"
                     "2. Set minimum TLS version to 1.2\n"
@@ -155,6 +171,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='HIGH',
                 finding_type='deprecated_protocol',
+                rule_id='PROTO_TLS11_DEPRECATED',
                 title='TLS 1.1 Detected (Deprecated)',
                 description=(
                     f"TLS 1.1 was detected in {count} handshake(s). "
@@ -162,6 +179,7 @@ class SecurityEngine:
                     f"Major browsers and mail providers have dropped support."
                 ),
                 evidence=f"{count} TLS handshakes using TLS 1.1",
+                structured_evidence={'version': 'TLS 1.1', 'count': count},
                 remediation=(
                     "1. Disable TLS 1.1 on all mail servers\n"
                     "2. Use TLS 1.2 or TLS 1.3 only\n"
@@ -195,6 +213,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='weak_cipher',
+                rule_id='CIPHER_WEAK_DETECTED',
                 title='Weak Cipher Suites Detected',
                 description=(
                     f"The following weak cipher suite(s) were negotiated: "
@@ -203,6 +222,7 @@ class SecurityEngine:
                     f"or provide no encryption at all."
                 ),
                 evidence=f"Negotiated weak cipher(s): {', '.join(names[:5])}",
+                structured_evidence={'weak_ciphers': names},
                 remediation=(
                     "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers from the server config\n"
                     "2. Prioritize AEAD ciphers: AES-GCM, ChaCha20-Poly1305\n"
@@ -250,6 +270,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='HIGH',
                 finding_type='no_forward_secrecy',
+                rule_id='TLS_NO_FORWARD_SECRECY',
                 title='TLS Session Without Forward Secrecy',
                 description=(
                     f"{len(weak_kex_sessions)} TLS session(s) negotiated a static "
@@ -260,6 +281,7 @@ class SecurityEngine:
                     f"not just future ones."
                 ),
                 evidence='; '.join(examples),
+                structured_evidence={'sessions': weak_kex_sessions},
                 remediation=(
                     "1. Configure the server to prefer ECDHE or DHE cipher suites\n"
                     "2. Disable static RSA and static (EC)DH key-exchange cipher suites\n"
@@ -279,7 +301,8 @@ class SecurityEngine:
                 if weak in sig_algo:
                     weak_certs.append({
                         'subject': cert.get('subject', 'Unknown'),
-                        'algorithm': cert.get('signature_algorithm', '')
+                        'algorithm': cert.get('signature_algorithm', ''),
+                        'serial': cert.get('serial_number', '')
                     })
                     break
 
@@ -288,6 +311,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='HIGH',
                 finding_type='weak_signature',
+                rule_id='CERT_SIGNATURE_WEAK',
                 title='Weak Certificate Signature Algorithm',
                 description=(
                     f"{len(weak_certs)} certificate(s) use weak signature "
@@ -295,6 +319,7 @@ class SecurityEngine:
                     f"collision attacks."
                 ),
                 evidence=f"Affected: {', '.join(subjects)}",
+                structured_evidence={'affected_certificates': weak_certs},
                 remediation=(
                     "1. Re-issue certificates with SHA-256 or stronger\n"
                     "2. Update CA signing configuration\n"
@@ -330,6 +355,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='HIGH',
                 finding_type='insufficient_key_size',
+                rule_id='CERT_KEY_SIZE_INSUFFICIENT',
                 title='Insufficient Certificate Key Size',
                 description=(
                     f"{len(weak_keys)} certificate(s) have key sizes below "
@@ -337,67 +363,19 @@ class SecurityEngine:
                     f"brute-force factorization."
                 ),
                 evidence='; '.join(details),
+                structured_evidence={'weak_keys': weak_keys},
                 remediation=(
-                    "1. Use RSA keys ≥ 2048 bits (4096 recommended)\n"
-                    "2. Use ECC keys ≥ 256 bits\n"
+                    "1. Use RSA keys >= 2048 bits (4096 recommended)\n"
+                    "2. Use ECC keys >= 256 bits\n"
                     "3. Re-issue certificates with stronger keys"
                 )
             )
 
-    # ─── CHECK 8: EXPIRED CERTIFICATES ───
-    def check_expired_certificates(self):
-        certificates = self.data.get('certificates', [])
-        expired = [c for c in certificates if c.get('is_expired')]
-
-        if expired:
-            subjects = [c.get('subject', 'Unknown') for c in expired[:3]]
-            self._add_finding(
-                severity='HIGH',
-                finding_type='expired_certificate',
-                title='Expired Certificate Detected',
-                description=(
-                    f"{len(expired)} certificate(s) have expired. "
-                    f"Expired certificates break trust chains and "
-                    f"indicate poor certificate lifecycle management."
-                ),
-                evidence=f"Expired: {', '.join(subjects)}",
-                remediation=(
-                    "1. Renew expired certificates immediately\n"
-                    "2. Implement automated certificate renewal (ACME/Let's Encrypt)\n"
-                    "3. Set up expiry monitoring alerts (30 days before expiry)"
-                )
-            )
-
-    # ─── CHECK 9: SELF-SIGNED CERTIFICATES ───
-    def check_self_signed_certificates(self):
-        certificates = self.data.get('certificates', [])
-        self_signed = [c for c in certificates if c.get('is_self_signed')]
-
-        if self_signed:
-            subjects = [c.get('subject', 'Unknown') for c in self_signed[:3]]
-            self._add_finding(
-                severity='MEDIUM',
-                finding_type='self_signed_certificate',
-                title='Self-Signed Certificate Detected',
-                description=(
-                    f"{len(self_signed)} self-signed certificate(s) detected. "
-                    f"Self-signed certificates cannot be verified by clients "
-                    f"and are vulnerable to man-in-the-middle attacks."
-                ),
-                evidence=f"Self-signed: {', '.join(subjects)}",
-                remediation=(
-                    "1. Replace with certificates from a trusted CA\n"
-                    "2. Use Let's Encrypt for free trusted certificates\n"
-                    "3. If internal use, deploy a private CA and distribute root cert"
-                )
-            )
-
-    # ─── CHECK 10: MISSING STARTTLS ───
+    # ─── CHECK 8: MISSING STARTTLS ───
     def check_missing_starttls(self):
         sessions = self.data.get('sessions', [])
         tls_handshakes = self.data.get('tls_handshakes', [])
 
-        # Check for plaintext SMTP sessions without any TLS upgrade
         plaintext_smtp = [
             s for s in sessions
             if s.get('protocol') in ['SMTP', 'SMTP-Submission', 'SMTP-Alt']
@@ -410,6 +388,7 @@ class SecurityEngine:
             self._add_finding(
                 severity='HIGH',
                 finding_type='missing_starttls',
+                rule_id='PROTO_MISSING_STARTTLS',
                 title='No STARTTLS Negotiation Detected',
                 description=(
                     f"{len(plaintext_smtp)} plaintext SMTP session(s) detected "
@@ -420,6 +399,7 @@ class SecurityEngine:
                     f"{len(plaintext_smtp)} SMTP sessions on port 25/587 "
                     f"without STARTTLS"
                 ),
+                structured_evidence={'plaintext_session_count': len(plaintext_smtp)},
                 remediation=(
                     "1. Enable STARTTLS on SMTP server\n"
                     "2. Configure opportunistic TLS (TLS if available)\n"
@@ -428,6 +408,38 @@ class SecurityEngine:
                     "5. Dovecot: ssl = required"
                 )
             )
+
+    # ─── CHECK 9: GRANULAR CERTIFICATE CHAIN CHECKS ───
+    def check_certificate_chains(self):
+        """Integrates granular PKI findings from multi-tier chain analysis"""
+        chains = self.data.get('certificate_chains', [])
+        seen_rule_targets = set()
+
+        for ch in chains:
+            for pki_f in ch.get('pki_findings', []):
+                rule_id = pki_f.get('rule_id')
+                ev = pki_f.get('evidence', {})
+                unique_key = (rule_id, ev.get('subject'), ev.get('frame'))
+                if unique_key in seen_rule_targets:
+                    continue
+                seen_rule_targets.add(unique_key)
+
+                ev_str = f"Frame {ev.get('frame', 'N/A')} (Stream {ev.get('tcp_stream', 'N/A')})"
+                if ev.get('subject'):
+                    ev_str += f" - {ev.get('subject')}"
+                elif ev.get('sni'):
+                    ev_str += f" - SNI: {ev.get('sni')}"
+
+                self._add_finding(
+                    severity=pki_f.get('severity', 'MEDIUM'),
+                    finding_type='certificate_pki',
+                    rule_id=rule_id,
+                    title=pki_f.get('title', 'PKI Certificate Issue'),
+                    description=pki_f.get('description', ''),
+                    evidence=ev_str,
+                    structured_evidence=ev,
+                    remediation=pki_f.get('remediation', 'Renew or reconfigure certificate.')
+                )
 
     # ─── RISK SCORING ───
     def calculate_risk_score(self) -> Dict:
@@ -439,13 +451,11 @@ class SecurityEngine:
             'LOW': 2
         }
 
-        # Score from findings
         finding_score = sum(
             severity_weights.get(f['severity'], 0)
             for f in self.findings
         )
 
-        # Score from encryption ratio
         summary = self.data.get('summary', {})
         total = summary.get('total_packets', 0)
         plaintext = summary.get('plaintext_packets', 0)
@@ -454,11 +464,9 @@ class SecurityEngine:
         if total > 0:
             encryption_penalty = (plaintext / total) * 30
 
-        # Calculate total
         raw_score = finding_score + encryption_penalty
         risk_score = min(round(raw_score), 100)
 
-        # Determine level
         if risk_score >= 70:
             level = 'CRITICAL'
         elif risk_score >= 40:

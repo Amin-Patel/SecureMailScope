@@ -301,7 +301,27 @@ async def reject_pending_knowledge_source(finding_type: str):
     return {"success": True, "finding_type": finding_type, "message": "Draft discarded."}
 
 
-# ΓöÇΓöÇΓöÇ HELPER PIPELINE FUNCTION ΓöÇΓöÇΓöÇ
+# ─── 9. STREAM RETRIEVAL ───
+@app.get("/api/analysis/{capture_id}/stream/{stream_id}")
+async def get_stream_details(capture_id: str, stream_id: str):
+    """Retrieve structured TCP conversation stream by capture_id and stream_id."""
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    tcp_streams = data.get("tcp_streams", {})
+    stream_data = tcp_streams.get(str(stream_id))
+
+    if not stream_data:
+        raise HTTPException(status_code=404, detail=f"TCP Stream #{stream_id} not found in capture {capture_id}")
+
+    return JSONResponse(content=stream_data)
+
+
+# ─── HELPER PIPELINE FUNCTION ───
 def run_analysis_pipeline(file_path: Path, original_filename: str, capture_id: str, file_size: int):
     """Executes the PCAP analyzer, saves the payload, and returns JSON."""
     try:
