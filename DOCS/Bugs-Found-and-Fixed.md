@@ -95,26 +95,24 @@ so this correctly extracts zero certs rather than crashing) and
 component's substring-based checks (`MD5`/`SHA-1`, `RSA`, key size) line up
 correctly with the new field values with no frontend changes needed.
 
----
-
-## Found, not fixed (out of scope for the work in progress — flagged for follow-up)
-
 ### 5. Successful analyses crash into HTTP 500 on Windows consoles
 
 **Where:** `backend/app/core/pcap_analyzer.py`, `_print_report()`
 
-**What's wrong:** it prints a 🤖 emoji to the console. On a Windows console
-using the default cp1252 code page, that `print()` raises
-`UnicodeEncodeError` — and because it happens *after* the analysis has
+**What was wrong:** it printed a 🤖 emoji to the console. On a Windows
+console using the default cp1252 code page, that `print()` raised
+`UnicodeEncodeError` — and because it happened *after* the analysis had
 already fully succeeded but *inside* the same `try` block, the outer
-exception handler reports the entire analysis as failed (HTTP 500) even
+exception handler reported the entire analysis as failed (HTTP 500) even
 though `findings`, `risk`, and `ai_summary` were all correctly computed.
 
-**Why not fixed now:** out of scope for the RAG/forward-secrecy branches;
-worked around locally for testing via `PYTHONIOENCODING=utf-8`.
-
-**Recommended fix:** `sys.stdout.reconfigure(encoding="utf-8")` once at
-process start in `main.py`, or drop the emoji from the print statements.
+**Fix:** resolved independently by a teammate in `main` (commit `d03f255`,
+alongside deliverables #3/#4) — `_print_report()` is now wrapped in its own
+try/except and the emoji characters were replaced with plain-text markers
+(`[AI]`, `[+]`). Merged into `feature/rag-knowledge-base` and
+`docs/rag-and-fine-tuning-notes`; no longer open. See
+[`Teammate-Deliverables-3-and-4.md`](Teammate-Deliverables-3-and-4.md) for
+what else came in on that merge.
 
 ---
 
@@ -123,9 +121,9 @@ process start in `main.py`, or drop the emoji from the print statements.
 Before this session, in this environment, the existing
 `backend/tests/test_e2e_pipeline.py` suite passed 4/8 (blocked entirely by
 TShark not being installed). After installing TShark and fixing #1-#4
-above, it still passes **8/8** at the API level, but the `legacy_ssl3`
-demo capture now correctly produces **6 findings instead of 3** — the
-suite was passing throughout, but for most of this session it wasn't
-actually exercising a quarter of the documented security checks. All nine
-checks are now confirmed live end-to-end. Bug #5 (the Windows-console
-print crash) remains open and is the next thing worth a dedicated fix.
+above, it passed **8/8** at the API level, and the `legacy_ssl3` demo
+capture went from 3 findings to 6 — the suite was passing throughout, but
+for most of this session it wasn't actually exercising a quarter of the
+documented security checks. All nine checks were confirmed live
+end-to-end. Bug #5 was independently fixed by a teammate and merged in
+afterward. All five bugs logged here are now resolved.
