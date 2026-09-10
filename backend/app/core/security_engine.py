@@ -5,9 +5,7 @@ Deterministic security checks against extracted PCAP data
 
 from typing import List, Dict
 
-
-# Known weak cipher suite keywords
-WEAK_CIPHERS = ['RC4', 'DES', '3DES', 'NULL', 'EXPORT', 'anon', 'MD5']
+from core.cipher_suites import lookup as lookup_cipher_suite
 
 # Known weak signature algorithms
 WEAK_SIG_ALGOS = ['md5', 'sha1', 'md2']
@@ -50,6 +48,7 @@ class SecurityEngine:
         self.check_expired_certificates()
         self.check_self_signed_certificates()
         self.check_missing_starttls()
+        self.check_forward_secrecy()
 
         return self.findings
 
@@ -172,33 +171,100 @@ class SecurityEngine:
 
     # ─── CHECK 5: WEAK CIPHERS ───
     def check_weak_ciphers(self):
+        """Flag weak cipher suites that were actually negotiated (ServerHello),
+        not merely offered by the client -- a client listing a weak cipher
+        among many options isn't itself a vulnerability if the server never
+        selects it. tshark reports the negotiated cipher as a raw hex code
+        (e.g. "0x0035"), so this looks it up in the IANA cipher-suite
+        registry rather than string-matching cipher names."""
         handshakes = self.data.get('tls_handshakes', [])
-        weak_found = set()
+        weak_found: Dict[str, str] = {}  # cipher_code -> name
 
         for hs in handshakes:
-            for cipher in hs.get('cipher_suites', []):
-                cipher_upper = cipher.upper()
-                for weak in WEAK_CIPHERS:
-                    if weak.upper() in cipher_upper:
-                        weak_found.add(cipher)
+            if hs.get('handshake_type') != 'ServerHello':
+                continue
+            ciphers = hs.get('cipher_suites', [])
+            if not ciphers:
+                continue
+            info = lookup_cipher_suite(ciphers[0])
+            if info and info['weak']:
+                weak_found[ciphers[0]] = f"{info['name']} ({info['weak_reason']})"
 
         if weak_found:
+            names = list(weak_found.values())
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='weak_cipher',
                 title='Weak Cipher Suites Detected',
                 description=(
-                    f"The following weak cipher suites were offered or "
-                    f"selected: {', '.join(list(weak_found)[:5])}. "
-                    f"These ciphers are vulnerable to known attacks "
-                    f"(BEAST, SWEET32, RC4 biases)."
+                    f"The following weak cipher suite(s) were negotiated: "
+                    f"{', '.join(names[:5])}. These are vulnerable to known "
+                    f"attacks (BEAST, Sweet32, RC4 keystream biases, FREAK) "
+                    f"or provide no encryption at all."
                 ),
-                evidence=f"Weak ciphers: {', '.join(list(weak_found)[:5])}",
+                evidence=f"Negotiated weak cipher(s): {', '.join(names[:5])}",
                 remediation=(
-                    "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers\n"
+                    "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers from the server config\n"
                     "2. Prioritize AEAD ciphers: AES-GCM, ChaCha20-Poly1305\n"
                     "3. Use TLS 1.3 which only allows strong ciphers\n"
                     "4. Test with: testssl.sh mail.example.com"
+                )
+            )
+
+    # ─── CHECK 11: FORWARD SECRECY ───
+    def check_forward_secrecy(self):
+        """Flag TLS sessions that negotiated a static (non-ephemeral) key
+        exchange -- static RSA or static (EC)DH -- instead of DHE/ECDHE.
+        TLS 1.3 is skipped entirely since it mandates ephemeral key exchange
+        by design and is therefore always forward-secret."""
+        handshakes = self.data.get('tls_handshakes', [])
+        weak_kex_sessions = []
+
+        for hs in handshakes:
+            if hs.get('handshake_type') != 'ServerHello':
+                continue
+            if hs.get('tls_version') == 'TLS 1.3':
+                continue
+
+            ciphers = hs.get('cipher_suites', [])
+            if not ciphers:
+                continue
+
+            info = lookup_cipher_suite(ciphers[0])
+            if not info:
+                continue  # unrecognized cipher code -- don't guess at its properties
+
+            if not info['forward_secret']:
+                weak_kex_sessions.append({
+                    'src': hs.get('src') or 'unknown',
+                    'dst': hs.get('dst') or 'unknown',
+                    'cipher': info['name'],
+                    'tls_version': hs.get('tls_version'),
+                })
+
+        if weak_kex_sessions:
+            examples = [
+                f"{s['src']}→{s['dst']} ({s['cipher']}, {s['tls_version']})"
+                for s in weak_kex_sessions[:3]
+            ]
+            self._add_finding(
+                severity='HIGH',
+                finding_type='no_forward_secrecy',
+                title='TLS Session Without Forward Secrecy',
+                description=(
+                    f"{len(weak_kex_sessions)} TLS session(s) negotiated a static "
+                    f"(non-ephemeral) key exchange -- RSA or static (EC)DH -- instead "
+                    f"of DHE/ECDHE. Without forward secrecy, recording this encrypted "
+                    f"traffic today and later compromising the server's private key "
+                    f"would let an attacker decrypt every past session that used it, "
+                    f"not just future ones."
+                ),
+                evidence='; '.join(examples),
+                remediation=(
+                    "1. Configure the server to prefer ECDHE or DHE cipher suites\n"
+                    "2. Disable static RSA and static (EC)DH key-exchange cipher suites\n"
+                    "3. Prefer TLS 1.3, which removes non-ephemeral key exchange entirely\n"
+                    "4. Verify with: nmap --script ssl-enum-ciphers -p 465 mail.example.com"
                 )
             )
 

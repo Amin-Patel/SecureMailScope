@@ -202,6 +202,12 @@ class GeminiSecurityAssistant:
                 "The mail transfer agent fails to negotiate STARTTLS during SMTP handshake initiation, exposing message "
                 "routing headers, authentication tokens, and message payloads across untrusted intermediate relays."
             )
+        elif ftype == "no_forward_secrecy":
+            return (
+                "This session negotiated a static (non-ephemeral) RSA or (EC)DH key exchange instead of DHE/ECDHE. "
+                "If the server's private key is ever compromised in the future, every past session recorded today "
+                "using that key becomes retroactively decryptable, not just future traffic."
+            )
         elif ftype == "expired_certificate":
             return (
                 "The presented X.509 certificate has passed its validity period, causing client-side trust warnings, broken automated "
