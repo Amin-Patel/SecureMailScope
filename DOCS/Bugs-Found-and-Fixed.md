@@ -1,11 +1,12 @@
 # Bugs Found This Session — Summary
 
 A running log of pre-existing bugs discovered (and, where in scope, fixed)
-while building the RAG knowledge base and the forward-secrecy check on
-`feature/rag-knowledge-base`. None of these were introduced by that work —
-they predate it — but building real, end-to-end-tested features surfaced
-them because it's the first time this pipeline was actually run to
-completion against real PCAPs in this environment.
+while building the RAG knowledge base, the forward-secrecy check, and the
+certificate-pipeline fix on `feature/rag-knowledge-base`. None of these
+were introduced by that work — they predate it — but building real,
+end-to-end-tested features surfaced them because it's the first time this
+pipeline was actually run to completion against real PCAPs in this
+environment.
 
 ---
 
@@ -55,46 +56,48 @@ computed and thrown away.
 
 **Fix:** now also attaches `ai_source` and `ai_reference` to each finding.
 
----
-
-## Found, not fixed (out of scope for the work in progress — flagged for follow-up)
-
-### 4. All four certificate-based checks are currently dead
+### 4. All four certificate-based checks were completely dead
 
 **Where:** `backend/app/utils/cert_analyzer.py`
 
-**Severity: high — this is the most impactful bug found this session.**
+**Severity: high — this was the most impactful bug found this session.**
 
-**What's wrong:** the tshark field names it queries —
+**What was wrong:** the tshark field names it queried —
 `x509af.validity.notBefore`, `x509af.validity.notAfter`,
 `x509af.signatureAlgorithm`, `x509af.publicKeyAlgorithm`,
 `x509af.publicKey.length` — do not exist in the installed tshark version
 (4.6.8; confirmed via `tshark -G fields`, and by running the exact command
-`cert_analyzer.py` builds, which errors with `Some fields aren't valid`).
-tshark exits non-zero, `result.stdout` is empty, and the surrounding
-`except` swallows this into a silent `return []` — so `extract_certificates`
-always returns zero certificates, on every capture, no error surfaced
-anywhere.
+`cert_analyzer.py` built, which errored with `Some fields aren't valid`).
+tshark exited non-zero, `result.stdout` was empty, and the surrounding
+`except` swallowed this into a silent `return []` — so `extract_certificates`
+always returned zero certificates, on every capture, no error surfaced
+anywhere. That meant `check_weak_signatures`, `check_key_sizes`,
+`check_expired_certificates`, and `check_self_signed_certificates` could
+never fire, regardless of what was actually in a capture.
 
-**Consequence:** `check_weak_signatures`, `check_key_sizes`,
-`check_expired_certificates`, and `check_self_signed_certificates` in
-`security_engine.py` all operate on an always-empty `certificates` list —
-none of them can ever produce a finding, regardless of what's actually in
-the capture. That's 4 of the (now) 9 documented security checks.
+**Fix:** rebuilt extraction to pull only the one X.509 field tshark
+reliably exposes across versions — the raw DER certificate bytes
+(`tls.handshake.certificate`/`ssl.handshake.certificate`, a plain
+`FT_BYTES` field with no version-specific sub-dissection) — and parse them
+directly with the `cryptography` library (already a project dependency)
+instead of depending on tshark's own X.509 dissector fields. Also replaced
+a fragile raw-string self-signed comparison and manual date-string parsing
+with structural RDN comparison and `cryptography`'s typed, timezone-aware
+datetime fields.
 
-**Why not fixed now:** the field-name drift goes deeper than a rename —
-this tshark version also has no direct equivalent of
-`x509af.publicKey.length` (key length would need to be derived from the raw
-`x509af.subjectPublicKey` bytes), and signature/public-key algorithm are
-now OID-based (`x509af.algorithm.id`), requiring an OID→name lookup similar
-in shape to the cipher-suite registry added for forward secrecy. That's a
-real, self-contained follow-up task, not a one-line fix.
+**Verified:** the `legacy_ssl3` demo capture (a real 1024-bit RSA cert,
+MD5-signed, expired since 2008) went from 3 findings to 6 — correctly
+firing `weak_signature`, `insufficient_key_size`, and `expired_certificate`
+for the first time ever in this environment. Confirmed no regression on
+`secure_enterprise` (TLS 1.3 — certificate is encrypted in the handshake,
+so this correctly extracts zero certs rather than crashing) and
+`vulnerable_smtp` (no TLS at all). The frontend's `CertificateViewer`
+component's substring-based checks (`MD5`/`SHA-1`, `RSA`, key size) line up
+correctly with the new field values with no frontend changes needed.
 
-**Recommended next step:** rebuild `cert_analyzer.py`'s tshark field list
-against `tshark -G fields | grep x509af`, add an OID→algorithm-name table
-(mirroring `cipher_suites.py`'s approach), and derive key length from the
-raw public key bytes. Verify against `test-data/rsasnakeoil2.cap`, which is
-known to carry a real certificate.
+---
+
+## Found, not fixed (out of scope for the work in progress — flagged for follow-up)
 
 ### 5. Successful analyses crash into HTTP 500 on Windows consoles
 
@@ -115,13 +118,14 @@ process start in `main.py`, or drop the emoji from the print statements.
 
 ---
 
-## Net effect once bugs #1 and #4 are both fixed
+## Net effect
 
 Before this session, in this environment, the existing
 `backend/tests/test_e2e_pipeline.py` suite passed 4/8 (blocked entirely by
-TShark not being installed). After installing TShark and fixing #1-#3
-above, it passes **8/8** — but that's measuring API-level behavior
-(status codes, report generation), not finding correctness. Bug #4 means
-the suite's "passing" state doesn't currently exercise certificate-based
-findings at all. Fixing #4 is the single highest-leverage remaining item:
-it silently restores an entire quarter of the documented security checks.
+TShark not being installed). After installing TShark and fixing #1-#4
+above, it still passes **8/8** at the API level, but the `legacy_ssl3`
+demo capture now correctly produces **6 findings instead of 3** — the
+suite was passing throughout, but for most of this session it wasn't
+actually exercising a quarter of the documented security checks. All nine
+checks are now confirmed live end-to-end. Bug #5 (the Windows-console
+print crash) remains open and is the next thing worth a dedicated fix.
