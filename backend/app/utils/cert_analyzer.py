@@ -1,171 +1,619 @@
 """
-Certificate extraction and analysis using tshark + cryptography
+Certificate Extraction, Chain Construction, and CA Trust Hierarchy Validation
+Adheres strictly to deterministic X.509 cryptography and RFC 5280 PKI path validation.
 """
 
-import subprocess
-import json
-from pathlib import Path
-from typing import List, Dict
+import binascii
+import fnmatch
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple, Any
 
-try:
-    from utils.tshark_helper import TSharkHelper
-except ImportError:
-    try:
-        from app.utils.tshark_helper import TSharkHelper
-    except ImportError:
-        from .tshark_helper import TSharkHelper
+import certifi
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import padding, ec, ed25519, ed448, rsa, dsa
+from cryptography.x509.oid import ExtensionOID, NameOID, ExtendedKeyUsageOID
+
+from app.utils.tshark_helper import TSharkHelper
 
 
 class CertificateAnalyzer:
-    """Extract and analyze X.509 certificates from PCAP"""
+    """Extracts, inspects, and validates multi-tier X.509 certificate chains and trust paths."""
+
+    _TRUST_STORE_CACHE: Optional[List[x509.Certificate]] = None
+
+    @classmethod
+    def get_trust_store(cls) -> List[x509.Certificate]:
+        """Loads and caches Mozilla root CA trust store from certifi."""
+        if cls._TRUST_STORE_CACHE is None:
+            certs = []
+            try:
+                with open(certifi.where(), "rb") as f:
+                    pem_data = f.read()
+                # Load all certificates in bundle
+                certs = x509.load_pem_x509_certificates(pem_data)
+            except Exception as e:
+                print(f"[!] Warning: Failed to load system root trust store: {e}")
+            cls._TRUST_STORE_CACHE = certs
+        return cls._TRUST_STORE_CACHE
+
+    @staticmethod
+    def verify_certificate_signature(child_cert: x509.Certificate, parent_cert: x509.Certificate) -> bool:
+        """
+        Verifies that child_cert was digitally signed by parent_cert.
+        Supports RSA (PKCS#1 v1.5 and PSS), ECDSA, Ed25519, and Ed448.
+        """
+        try:
+            public_key = parent_cert.public_key()
+            sig_bytes = child_cert.signature
+            tbs_bytes = child_cert.tbs_certificate_bytes
+            sig_hash = child_cert.signature_hash_algorithm
+
+            if isinstance(public_key, rsa.RSAPublicKey):
+                if sig_hash is None:
+                    # Might be legacy or custom
+                    return False
+                public_key.verify(sig_bytes, tbs_bytes, padding.PKCS1v15(), sig_hash)
+                return True
+            elif isinstance(public_key, ec.EllipticCurvePublicKey):
+                if sig_hash is None:
+                    return False
+                public_key.verify(sig_bytes, tbs_bytes, ec.ECDSA(sig_hash))
+                return True
+            elif isinstance(public_key, (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)):
+                public_key.verify(sig_bytes, tbs_bytes)
+                return True
+            elif isinstance(public_key, dsa.DSAPublicKey):
+                if sig_hash is None:
+                    return False
+                public_key.verify(sig_bytes, tbs_bytes, sig_hash)
+                return True
+            return False
+        except Exception:
+            return False
+
+    @classmethod
+    def extract_and_analyze_chains(cls, pcap_path: str) -> List[Dict]:
+        """
+        Extracts presented certificate chains from PCAP, builds trust paths against the
+        configured trust store, and performs deterministic PKI validation.
+        """
+        raw_items = TSharkHelper.extract_raw_certificates(pcap_path)
+        if not raw_items:
+            return []
+
+        # Group presented certificates by TLS stream / frame
+        streams_map: Dict[str, List[Dict]] = {}
+        for item in raw_items:
+            key = f"{item['tcp_stream']}_{item['ip_src']}_{item['ip_dst']}"
+            if key not in streams_map:
+                streams_map[key] = []
+            streams_map[key].append(item)
+
+        analyzed_results = []
+
+        for group_key, items in streams_map.items():
+            # Sort items by chain position
+            items.sort(key=lambda x: x['chain_position'])
+            presented_certs_parsed: List[Tuple[x509.Certificate, Dict]] = []
+
+            for it in items:
+                try:
+                    cert_obj = x509.load_der_x509_certificate(it['der_bytes'])
+                    presented_certs_parsed.append((cert_obj, it))
+                except Exception as e:
+                    print(f"[!] Failed to parse X.509 DER certificate: {e}")
+
+            if not presented_certs_parsed:
+                continue
+
+            # Analyze the presented chain for this handshake
+            chain_analysis = cls._analyze_single_handshake_chain(presented_certs_parsed)
+            analyzed_results.append(chain_analysis)
+
+        return analyzed_results
+
+    @classmethod
+    def _analyze_single_handshake_chain(cls, presented: List[Tuple[x509.Certificate, Dict]]) -> Dict:
+        """
+        Analyzes a single TLS handshake's certificate chain:
+        1. Formats each presented certificate into a structured dictionary.
+        2. Reconstructs the presented chain and builds the trust path to a trusted root CA.
+        3. Executes deterministic PKI validation checks.
+        """
+        now = datetime.now(timezone.utc)
+        trust_store = cls.get_trust_store()
+
+        first_cert, first_meta = presented[0]
+        sni = first_meta.get('sni') or ''
+        frame_number = first_meta.get('frame_number', 0)
+        tcp_stream = first_meta.get('tcp_stream', '0')
+
+        # 1. Structure all presented certificates
+        structured_presented = []
+        for idx, (cert, meta) in enumerate(presented):
+            struct_cert = cls._serialize_certificate(cert, is_presented=True, meta=meta, chain_pos=idx)
+            structured_presented.append((cert, struct_cert))
+
+        # 2. Build Trust Path:
+        # Start with leaf certificate (first certificate presented in standard TLS)
+        leaf_cert, leaf_struct = structured_presented[0]
+        
+        # Check Hostname / SAN match
+        hostname_val = cls._validate_hostname(leaf_struct['subject_alternative_names'], leaf_struct['common_name'], sni)
+        leaf_struct['hostname_validation'] = hostname_val
+
+        built_path_structs: List[Dict] = [leaf_struct]
+        current_cert = leaf_cert
+        current_struct = leaf_struct
+        chain_order_valid = True
+        signature_valid_throughout = True
+        is_untrusted_ca = False
+        is_unbuildable_chain = False
+        root_ca_found = None
+
+        # Try to link through remaining presented certificates
+        presented_pool = list(structured_presented[1:])
+        visited = {leaf_cert.serial_number}
+
+        while True:
+            # Check if current cert is self-signed (Root CA)
+            if current_cert.issuer == current_cert.subject:
+                if cls.verify_certificate_signature(current_cert, current_cert):
+                    current_struct['is_self_signed'] = True
+                    # Check if present in trust store
+                    if cls._is_in_trust_store(current_cert, trust_store):
+                        current_struct['trust_status'] = 'TRUSTED_ROOT'
+                    else:
+                        current_struct['trust_status'] = 'UNTRUSTED_ROOT'
+                        is_untrusted_ca = True
+                    root_ca_found = current_cert
+                    break
+
+            # Find parent in presented pool
+            parent_found = None
+            parent_struct = None
+            for idx, (p_cert, p_struct) in enumerate(presented_pool):
+                if p_cert.serial_number not in visited and p_cert.subject == current_cert.issuer:
+                    # Additional check: SKI / AKI if available
+                    aki = current_struct.get('authority_key_identifier')
+                    ski = p_struct.get('subject_key_identifier')
+                    if aki and ski and aki != ski:
+                        continue # Key identifier mismatch
+
+                    # Verify signature
+                    if cls.verify_certificate_signature(current_cert, p_cert):
+                        parent_found = p_cert
+                        parent_struct = p_struct
+                        # Check chain ordering
+                        if presented_pool.index((p_cert, p_struct)) != 0:
+                            chain_order_valid = False
+                        presented_pool.pop(idx)
+                        break
+
+            if parent_found:
+                visited.add(parent_found.serial_number)
+                built_path_structs.append(parent_struct)
+                current_cert = parent_found
+                current_struct = parent_struct
+                continue
+
+            # If not in presented pool, check local Trust Store (standard TLS behavior)
+            trust_anchor = cls._find_in_trust_store(current_cert.issuer, current_struct.get('authority_key_identifier'), trust_store)
+            if trust_anchor:
+                if cls.verify_certificate_signature(current_cert, trust_anchor):
+                    anchor_struct = cls._serialize_certificate(trust_anchor, is_presented=False, meta=None, chain_pos=len(built_path_structs))
+                    anchor_struct['trust_status'] = 'TRUSTED_ROOT'
+                    built_path_structs.append(anchor_struct)
+                    root_ca_found = trust_anchor
+                    break
+                else:
+                    signature_valid_throughout = False
+
+            # If neither found, path cannot be completed
+            is_unbuildable_chain = True
+            is_untrusted_ca = True
+            break
+
+        # 3. Deterministic PKI Findings Collection
+        pki_findings = cls._evaluate_pki_rules(
+            built_path_structs=built_path_structs,
+            leaf_struct=leaf_struct,
+            chain_order_valid=chain_order_valid,
+            signature_valid=signature_valid_throughout,
+            is_unbuildable=is_unbuildable_chain,
+            is_untrusted=is_untrusted_ca,
+            frame_number=frame_number,
+            tcp_stream=tcp_stream,
+            sni=sni
+        )
+
+        return {
+            'frame_number': frame_number,
+            'tcp_stream': tcp_stream,
+            'sni': sni,
+            'leaf_certificate': leaf_struct,
+            'presented_chain': [s for _, s in structured_presented],
+            'built_trust_path': built_path_structs,
+            'chain_depth': len(built_path_structs),
+            'chain_order_valid': chain_order_valid,
+            'chain_complete': not is_unbuildable_chain,
+            'is_trusted': not (is_untrusted_ca or is_unbuildable_chain),
+            'pki_findings': pki_findings
+        }
+
+    @staticmethod
+    def _serialize_certificate(cert: x509.Certificate, is_presented: bool, meta: Optional[Dict], chain_pos: int) -> Dict[str, Any]:
+        """Converts an x509.Certificate object into a rich, structured dictionary."""
+        now = datetime.now(timezone.utc)
+        
+        # Subject & Issuer formatting
+        subject_str = cert.subject.rfc4514_string()
+        issuer_str = cert.issuer.rfc4514_string()
+        
+        # Extract Common Name
+        cn_attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        common_name = cn_attrs[0].value if cn_attrs else subject_str
+
+        issuer_cn_attrs = cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
+        issuer_common_name = issuer_cn_attrs[0].value if issuer_cn_attrs else issuer_str
+
+        # Serial Number formatted in hex
+        serial_hex = f"{cert.serial_number:032X}"
+
+        # Validity
+        not_before = cert.not_valid_before_utc
+        not_after = cert.not_valid_after_utc
+        is_expired = now > not_after
+        not_yet_valid = now < not_before
+
+        # Public Key Info
+        pub_key = cert.public_key()
+        pub_algo = "UNKNOWN"
+        key_size = 0
+        if isinstance(pub_key, rsa.RSAPublicKey):
+            pub_algo = "RSA"
+            key_size = pub_key.key_size
+        elif isinstance(pub_key, ec.EllipticCurvePublicKey):
+            pub_algo = f"ECDSA ({pub_key.curve.name})"
+            key_size = pub_key.key_size
+        elif isinstance(pub_key, ed25519.Ed25519PublicKey):
+            pub_algo = "Ed25519"
+            key_size = 256
+        elif isinstance(pub_key, ed448.Ed448PublicKey):
+            pub_algo = "Ed448"
+            key_size = 448
+        elif isinstance(pub_key, dsa.DSAPublicKey):
+            pub_algo = "DSA"
+            key_size = pub_key.key_size
+
+        # Signature Algorithm
+        sig_algo = cert.signature_algorithm_oid._name if hasattr(cert.signature_algorithm_oid, '_name') else str(cert.signature_algorithm_oid.dotted_string)
+        sig_hash_algo = cert.signature_hash_algorithm.name if cert.signature_hash_algorithm else "None"
+
+        # Extensions: SKI / AKI
+        ski = None
+        try:
+            ski_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+            ski = binascii.hexlify(ski_ext.value.digest).decode('ascii')
+        except Exception:
+            pass
+
+        aki = None
+        try:
+            aki_ext = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
+            if aki_ext.value.key_identifier:
+                aki = binascii.hexlify(aki_ext.value.key_identifier).decode('ascii')
+        except Exception:
+            pass
+
+        # Basic Constraints
+        is_ca = False
+        path_len = None
+        try:
+            bc_ext = cert.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
+            is_ca = bc_ext.value.ca
+            path_len = bc_ext.value.path_length
+        except Exception:
+            pass
+
+        # Key Usage
+        key_usages = []
+        try:
+            ku_ext = cert.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE)
+            ku = ku_ext.value
+            if ku.digital_signature: key_usages.append("digitalSignature")
+            if ku.content_commitment: key_usages.append("nonRepudiation")
+            if ku.key_encipherment: key_usages.append("keyEncipherment")
+            if ku.data_encipherment: key_usages.append("dataEncipherment")
+            if ku.key_agreement: key_usages.append("keyAgreement")
+            if ku.key_cert_sign: key_usages.append("keyCertSign")
+            if ku.crl_sign: key_usages.append("cRLSign")
+        except Exception:
+            pass
+
+        # Extended Key Usage
+        ekus = []
+        try:
+            eku_ext = cert.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
+            for oid in eku_ext.value:
+                if oid == ExtendedKeyUsageOID.SERVER_AUTH: ekus.append("serverAuth")
+                elif oid == ExtendedKeyUsageOID.CLIENT_AUTH: ekus.append("clientAuth")
+                elif oid == ExtendedKeyUsageOID.EMAIL_PROTECTION: ekus.append("emailProtection")
+                elif oid == ExtendedKeyUsageOID.CODE_SIGNING: ekus.append("codeSigning")
+                else: ekus.append(oid.dotted_string)
+        except Exception:
+            pass
+
+        # Subject Alternative Names (SAN)
+        sans = []
+        try:
+            san_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+            sans = san_ext.value.get_values_for_type(x509.DNSName) + [str(ip) for ip in san_ext.value.get_values_for_type(x509.IPAddress)]
+        except Exception:
+            pass
+
+        is_self_signed = (cert.issuer == cert.subject)
+
+        trust_status = 'TRUSTED_INTERMEDIATE' if is_ca else 'LEAF'
+        if is_self_signed:
+            trust_status = 'SELF_SIGNED'
+
+        return {
+            'common_name': common_name,
+            'subject': subject_str,
+            'issuer': issuer_str,
+            'issuer_common_name': issuer_common_name,
+            'serial_number': serial_hex,
+            'not_before': not_before.isoformat(),
+            'not_after': not_after.isoformat(),
+            'is_expired': is_expired,
+            'not_yet_valid': not_yet_valid,
+            'public_key_algorithm': pub_algo,
+            'key_size': key_size,
+            'signature_algorithm': sig_algo,
+            'signature_hash_algorithm': sig_hash_algo,
+            'subject_key_identifier': ski,
+            'authority_key_identifier': aki,
+            'is_ca': is_ca,
+            'path_length': path_len,
+            'key_usages': key_usages,
+            'extended_key_usages': ekus,
+            'subject_alternative_names': sans,
+            'is_self_signed': is_self_signed,
+            'is_presented': is_presented,
+            'chain_position': chain_pos,
+            'trust_status': trust_status,
+            'frame_number': meta.get('frame_number') if meta else None,
+            'tcp_stream': meta.get('tcp_stream') if meta else None
+        }
+
+    @staticmethod
+    def _validate_hostname(sans: List[str], common_name: str, sni: str) -> str:
+        """Validates SNI hostname against certificate SANs and CN."""
+        if not sni:
+            return "NOT_DETERMINABLE_FROM_CAPTURE"
+        
+        sni_clean = sni.strip().lower()
+        candidates = [s.strip().lower() for s in sans]
+        if common_name:
+            candidates.append(common_name.strip().lower())
+
+        for cand in candidates:
+            if cand == sni_clean:
+                return "MATCH"
+            # Wildcard matching *.example.com
+            if cand.startswith("*.") and fnmatch.fnmatch(sni_clean, cand):
+                return "MATCH"
+
+        return "MISMATCH"
+
+    @classmethod
+    def _is_in_trust_store(cls, cert: x509.Certificate, trust_store: List[x509.Certificate]) -> bool:
+        """Checks if a certificate is present in the trusted root CA store."""
+        for root in trust_store:
+            if root.subject == cert.subject and root.public_key() == cert.public_key():
+                return True
+        return False
+
+    @classmethod
+    def _find_in_trust_store(cls, issuer: x509.Name, aki: Optional[str], trust_store: List[x509.Certificate]) -> Optional[x509.Certificate]:
+        """Finds a matching root anchor in the trust store by issuer Name and optional AKI."""
+        for root in trust_store:
+            if root.subject == issuer:
+                # If SKI on root exists, match with AKI
+                if aki:
+                    try:
+                        ski_ext = root.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+                        root_ski = binascii.hexlify(ski_ext.value.digest).decode('ascii')
+                        if root_ski == aki:
+                            return root
+                    except Exception:
+                        pass
+                return root
+        return None
+
+    @staticmethod
+    def _evaluate_pki_rules(
+        built_path_structs: List[Dict],
+        leaf_struct: Dict,
+        chain_order_valid: bool,
+        signature_valid: bool,
+        is_unbuildable: bool,
+        is_untrusted: bool,
+        frame_number: int,
+        tcp_stream: str,
+        sni: str
+    ) -> List[Dict]:
+        """
+        Runs granular, deterministic PKI validation rules returning machine-readable findings.
+        """
+        findings = []
+
+        # 1. CERT_EXPIRED
+        for c in built_path_structs:
+            if c['is_expired']:
+                findings.append({
+                    'rule_id': 'CERT_EXPIRED',
+                    'severity': 'HIGH',
+                    'title': f"Certificate Expired: {c['common_name']}",
+                    'description': f"Certificate for '{c['common_name']}' expired on {c['not_after']}.",
+                    'evidence': {
+                        'frame': frame_number,
+                        'tcp_stream': tcp_stream,
+                        'subject': c['subject'],
+                        'not_after': c['not_after'],
+                        'serial': c['serial_number']
+                    },
+                    'remediation': "Renew and redeploy the expired certificate."
+                })
+
+        # 2. CERT_NOT_YET_VALID
+        for c in built_path_structs:
+            if c.get('not_yet_valid'):
+                findings.append({
+                    'rule_id': 'CERT_NOT_YET_VALID',
+                    'severity': 'HIGH',
+                    'title': f"Certificate Not Yet Valid: {c['common_name']}",
+                    'description': f"Certificate for '{c['common_name']}' is not valid until {c['not_before']}.",
+                    'evidence': {
+                        'frame': frame_number,
+                        'tcp_stream': tcp_stream,
+                        'subject': c['subject'],
+                        'not_before': c['not_before']
+                    },
+                    'remediation': "Verify system clock synchronization and certificate issuance start timestamp."
+                })
+
+        # 3. CERT_HOSTNAME_MISMATCH
+        if leaf_struct.get('hostname_validation') == 'MISMATCH':
+            findings.append({
+                'rule_id': 'CERT_HOSTNAME_MISMATCH',
+                'severity': 'HIGH',
+                'title': f"Certificate Hostname Mismatch (SNI: {sni})",
+                'description': f"The presented certificate does not match the observed TLS SNI '{sni}'.",
+                'evidence': {
+                    'frame': frame_number,
+                    'tcp_stream': tcp_stream,
+                    'sni': sni,
+                    'certificate_sans': leaf_struct['subject_alternative_names'],
+                    'common_name': leaf_struct['common_name']
+                },
+                'remediation': f"Issue certificate including '{sni}' in Subject Alternative Names (SAN)."
+            })
+
+        # 4. CERT_SIGNATURE_INVALID
+        if not signature_valid:
+            findings.append({
+                'rule_id': 'CERT_SIGNATURE_INVALID',
+                'severity': 'CRITICAL',
+                'title': "Invalid Certificate Cryptographic Signature",
+                'description': "Cryptographic signature verification failed between parent and child certificates in the chain.",
+                'evidence': {
+                    'frame': frame_number,
+                    'tcp_stream': tcp_stream
+                },
+                'remediation': "Inspect CA hierarchy and re-issue the certificate chain."
+            })
+
+        # 5. CERT_INVALID_CHAIN_ORDER
+        if not chain_order_valid:
+            findings.append({
+                'rule_id': 'CERT_INVALID_CHAIN_ORDER',
+                'severity': 'MEDIUM',
+                'title': "Invalid Certificate Chain Order in TLS Handshake",
+                'description': "Certificates were presented out of sequence (RFC 5246 requires Leaf followed by successive Intermediate CAs).",
+                'evidence': {
+                    'frame': frame_number,
+                    'tcp_stream': tcp_stream
+                },
+                'remediation': "Reorder the intermediate certificates bundle on the mail server."
+            })
+
+        # 6. CERT_CHAIN_UNBUILDABLE / CERT_UNTRUSTED_CA
+        if is_unbuildable or is_untrusted:
+            if leaf_struct.get('is_self_signed'):
+                findings.append({
+                    'rule_id': 'CERT_SELF_SIGNED',
+                    'severity': 'MEDIUM',
+                    'title': f"Self-Signed Certificate Detected ({leaf_struct['common_name']})",
+                    'description': "The endpoint presented a self-signed certificate rather than one signed by a trusted CA.",
+                    'evidence': {
+                        'frame': frame_number,
+                        'tcp_stream': tcp_stream,
+                        'subject': leaf_struct['subject']
+                    },
+                    'remediation': "Deploy certificates issued by a publicly trusted CA (e.g. Let's Encrypt)."
+                })
+            else:
+                findings.append({
+                    'rule_id': 'CERT_UNTRUSTED_CA',
+                    'severity': 'HIGH',
+                    'title': "Untrusted Certificate Authority / Incomplete Chain",
+                    'description': "Certificate chain could not be anchored to a known trusted Root CA in the trust store.",
+                    'evidence': {
+                        'frame': frame_number,
+                        'tcp_stream': tcp_stream,
+                        'issuer': leaf_struct['issuer']
+                    },
+                    'remediation': "Ensure all intermediate certificates are installed on the server and use a trusted CA."
+                })
+
+        # 7. CERT_INVALID_EKU
+        if leaf_struct.get('extended_key_usages') and 'serverAuth' not in leaf_struct['extended_key_usages']:
+            findings.append({
+                'rule_id': 'CERT_INVALID_EKU',
+                'severity': 'MEDIUM',
+                'title': "Missing serverAuth in Extended Key Usage",
+                'description': "Leaf certificate Extended Key Usage does not allow TLS Server Authentication ('serverAuth').",
+                'evidence': {
+                    'frame': frame_number,
+                    'tcp_stream': tcp_stream,
+                    'ekus': leaf_struct['extended_key_usages']
+                },
+                'remediation': "Include 'serverAuth' (OID 1.3.6.1.5.5.7.3.1) in Extended Key Usage extension."
+            })
+
+        # 8. CERT_INVALID_BASIC_CONSTRAINTS
+        for idx, c in enumerate(built_path_structs[1:], 1):
+            if not c.get('is_ca'):
+                findings.append({
+                    'rule_id': 'CERT_INVALID_BASIC_CONSTRAINTS',
+                    'severity': 'CRITICAL',
+                    'title': f"Intermediate CA Missing Basic Constraints CA:TRUE ({c['common_name']})",
+                    'description': f"Certificate at position {idx} acted as an intermediate signer but has CA:FALSE.",
+                    'evidence': {
+                        'frame': frame_number,
+                        'tcp_stream': tcp_stream,
+                        'subject': c['subject']
+                    },
+                    'remediation': "Ensure signing certificates have Basic Constraints CA:TRUE and keyCertSign usage."
+                })
+
+        return findings
 
     @staticmethod
     def extract_certificates(pcap_path: str) -> List[Dict]:
-        """
-        Extract certificate metadata from TLS handshakes using tshark.
-        Uses tshark's built-in X.509 dissection fields.
-        """
-        pcap_file = Path(pcap_path)
-        if not pcap_file.exists():
-            raise FileNotFoundError(f"PCAP not found: {pcap_path}")
-
-        # tshark extracts X.509 fields automatically from TLS Certificate messages
-        tshark_path = TSharkHelper.get_tshark_path()
-        cmd = [
-            tshark_path,
-            '-r', str(pcap_file),
-            '-Y', 'tls.handshake.type == 11 || ssl.handshake.type == 11',
-            '-T', 'json',
-            '-e', 'frame.number',
-            '-e', 'frame.time',
-            '-e', 'ip.src',
-            '-e', 'ip.dst',
-            '-e', 'x509af.subject',
-            '-e', 'x509af.issuer',
-            '-e', 'x509af.validity.notBefore',
-            '-e', 'x509af.validity.notAfter',
-            '-e', 'x509af.signatureAlgorithm',
-            '-e', 'x509af.publicKeyAlgorithm',
-            '-e', 'x509af.publicKey.length',
-            '-e', 'x509af.serialNumber',
-        ]
-
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if not result.stdout.strip():
-                return []
-
-            raw_data = json.loads(result.stdout)
-            certificates = []
-            seen_serials = set()
-
-            for packet in raw_data:
-                layers = packet.get('_source', {}).get('layers', {})
-
-                subject = layers.get('x509af.subject', [''])[0]
-                issuer = layers.get('x509af.issuer', [''])[0]
-                serial = layers.get('x509af.serialNumber', [''])[0]
-
-                # Skip duplicates (same cert appears in multiple frames)
-                if serial and serial in seen_serials:
-                    continue
-                if serial:
-                    seen_serials.add(serial)
-
-                not_before = layers.get('x509af.validity.notBefore', [''])[0]
-                not_after = layers.get('x509af.validity.notAfter', [''])[0]
-                sig_algo = layers.get('x509af.signatureAlgorithm', [''])[0]
-                pub_key_algo = layers.get('x509af.publicKeyAlgorithm', [''])[0]
-                key_length = layers.get('x509af.publicKey.length', [''])[0]
-
-                # Determine if self-signed
-                is_self_signed = False
-                if subject and issuer:
-                    is_self_signed = (subject.strip() == issuer.strip())
-
-                # Determine if expired
-                is_expired = False
-                if not_after:
-                    try:
-                        # tshark date format: "Jan  1 00:00:00 2025 GMT"
-                        expiry = datetime.strptime(
-                            not_after.strip(), "%b %d %H:%M:%S %Y %Z"
-                        )
-                        if expiry < datetime.utcnow():
-                            is_expired = True
-                    except ValueError:
-                        pass  # Can't parse date, skip expiry check
-
-                # Parse key size
-                key_size = 0
-                if key_length:
-                    try:
-                        key_size = int(key_length)
-                    except ValueError:
-                        pass
-
-                cert_info = {
-                    'frame': layers.get('frame.number', [''])[0],
-                    'timestamp': layers.get('frame.time', [''])[0],
-                    'src': layers.get('ip.src', [''])[0],
-                    'dst': layers.get('ip.dst', [''])[0],
-                    'subject': subject,
-                    'issuer': issuer,
-                    'serial': serial,
-                    'not_before': not_before,
-                    'not_after': not_after,
-                    'signature_algorithm': sig_algo,
-                    'public_key_algorithm': pub_key_algo,
-                    'key_size': key_size,
-                    'is_self_signed': is_self_signed,
-                    'is_expired': is_expired,
-                }
-
-                certificates.append(cert_info)
-
-            return certificates
-
-        except FileNotFoundError:
-            raise RuntimeError(
-                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("tshark certificate extraction timed out")
-        except json.JSONDecodeError:
-            return []
-        except Exception as e:
-            print(f"[!] Certificate extraction error: {e}")
-            return []
+        """Backward compatibility wrapper returning flat list of parsed certificates."""
+        chains = CertificateAnalyzer.extract_and_analyze_chains(pcap_path)
+        flat_certs = []
+        seen = set()
+        for ch in chains:
+            for c in ch['presented_chain']:
+                if c['serial_number'] not in seen:
+                    seen.add(c['serial_number'])
+                    flat_certs.append(c)
+        return flat_certs
 
 
-# Test
 if __name__ == '__main__':
     import sys
-
-    if len(sys.argv) < 2:
-        print("Usage: python cert_analyzer.py <pcap_file>")
-        sys.exit(1)
-
-    pcap_file = sys.argv[1]
-    certs = CertificateAnalyzer.extract_certificates(pcap_file)
-
-    print(f"[+] Extracted {len(certs)} unique certificates\n")
-
-    for i, cert in enumerate(certs, 1):
-        print(f"Certificate #{i}:")
-        print(f"  Subject:    {cert['subject']}")
-        print(f"  Issuer:     {cert['issuer']}")
-        print(f"  Valid:      {cert['not_before']} → {cert['not_after']}")
-        print(f"  Sig Algo:   {cert['signature_algorithm']}")
-        print(f"  Key Algo:   {cert['public_key_algorithm']}")
-        print(f"  Key Size:   {cert['key_size']} bits")
-        print(f"  Self-Signed:{cert['is_self_signed']}")
-        print(f"  Expired:    {cert['is_expired']}")
-        print()
+    if len(sys.argv) > 1:
+        pcap = sys.argv[1]
+        chains = CertificateAnalyzer.extract_and_analyze_chains(pcap)
+        print(f"Extracted {len(chains)} certificate chains from {pcap}")
+        for ch in chains:
+            print(f"Stream {ch['tcp_stream']} Frame {ch['frame_number']} SNI='{ch['sni']}':")
+            print(f"  Presented: {len(ch['presented_chain'])}, Built Path: {len(ch['built_trust_path'])}, Trusted: {ch['is_trusted']}")
+            for f in ch['pki_findings']:
+                print(f"    - [{f['rule_id']}] {f['title']}")

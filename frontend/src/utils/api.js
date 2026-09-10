@@ -202,4 +202,20 @@ export async function deleteAnalysesBatch(captureIds) {
   }
 }
 
-
+/**
+ * Retrieve structured TCP conversation stream details by capture ID and stream ID.
+ * @param {string} captureId 
+ * @param {string|number} streamId 
+ * @returns {Promise<Object>}
+ */
+export async function getStreamDetails(captureId, streamId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/stream/${encodeURIComponent(streamId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { getAnalysis, getAnalyses } from '../utils/api';
+import { getAnalysis, getAnalyses, getStreamDetails } from '../utils/api';
 import { AIExplanation } from '../components/AIExplanation';
+import { StreamViewerModal } from '../components/StreamViewerModal';
+import { CertChainTree } from '../components/CertChainTree';
 
 // ── Toast notification ────────────────────────────────────────────────────────
 function Toast({ toasts, remove }) {
@@ -80,6 +82,8 @@ export function Analysis() {
   const [findingsSeverity, setFindingsSeverity] = useState('all');
   const [sessionsSearch, setSessionsSearch] = useState('');
   const [sessionsStatus, setSessionsStatus] = useState('all');
+  const [activeStream, setActiveStream] = useState(null);
+  const [loadingStream, setLoadingStream] = useState(false);
 
   // ── Toast helper ────────────────────────────────────────────────────────────
   const addToast = useCallback((message, type = 'success') => {
@@ -87,6 +91,25 @@ export function Analysis() {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
+
+  const handleFollowStream = async (session, e) => {
+    if (e) e.stopPropagation();
+    const streamId = session.stream_id ?? 0;
+    if (analysisData?.tcp_streams && analysisData.tcp_streams[String(streamId)]) {
+      setActiveStream(analysisData.tcp_streams[String(streamId)]);
+      return;
+    }
+    try {
+      setLoadingStream(true);
+      const streamData = await getStreamDetails(analysisData?.capture_id || jobId, streamId);
+      setActiveStream(streamData);
+    } catch (err) {
+      console.error('Failed to load stream details:', err);
+      addToast(`Could not reconstruct TCP Stream #${streamId}: ${err.message}`, 'error');
+    } finally {
+      setLoadingStream(false);
+    }
+  };
 
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam);
@@ -319,13 +342,13 @@ export function Analysis() {
 
       {/* Tab Bar */}
       <nav className="tabs-bar">
-        {['overview', 'findings', 'sessions', 'remediation', 'report'].map(tab => (
+        {['overview', 'findings', 'sessions', 'certificates', 'remediation', 'report'].map(tab => (
           <button
             key={tab}
             className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'certificates' ? 'Certificates & PKI' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </nav>
@@ -412,10 +435,10 @@ export function Analysis() {
           </div>
           <div className="data-table-wrapper">
             <table className="data-table">
-              <thead><tr><th>Session ID</th><th>Source</th><th>Destination</th><th>Protocol</th><th>TLS Version</th><th>Security Status</th></tr></thead>
+              <thead><tr><th>Session ID</th><th>Source</th><th>Destination</th><th>Protocol</th><th>TLS Version</th><th>Security Status</th><th>Action</th></tr></thead>
               <tbody>
                 {filteredSessions.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No sessions captured or matching filter</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No sessions captured or matching filter</td></tr>
                 ) : (
                   filteredSessions.map(s => {
                     const tlsVer = s.tls_versions && s.tls_versions.length > 0
@@ -434,6 +457,28 @@ export function Analysis() {
                             ? <span className="badge badge-low" style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>Secure</span>
                             : <span className="badge badge-critical">{statusLabel}</span>}
                         </td>
+                        <td>
+                          <button
+                            onClick={(e) => handleFollowStream(s, e)}
+                            style={{
+                              padding: '5px 12px',
+                              backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                              border: '1px solid rgba(99, 102, 241, 0.35)',
+                              borderRadius: '6px',
+                              color: '#818cf8',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              transition: 'all 0.2s ease'
+                            }}
+                            title="Follow reconstructed TCP conversation stream"
+                          >
+                            <i className="fa-solid fa-water" /> Follow Stream
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
@@ -443,6 +488,22 @@ export function Analysis() {
           </div>
         </section>
       )}
+
+      {/* ── Certificates & PKI ── */}
+      {activeTab === 'certificates' && (
+        <section className="tab-content active">
+          <div style={{ marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffffff', marginBottom: '4px' }}>
+              X.509 Certificate Chains &amp; Trust Hierarchy
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>
+              Reconstructed presented certificates from TLS handshakes validated against the trusted root CA store.
+            </p>
+          </div>
+          <CertChainTree chains={analysisData?.certificate_chains || []} />
+        </section>
+      )}
+
 
       {/* ── Remediation ── */}
       {activeTab === 'remediation' && (
@@ -582,6 +643,13 @@ export function Analysis() {
           );
         })()}
       </div>
+
+      {/* ── Follow TCP Stream Modal ── */}
+      {activeStream && (
+        <StreamViewerModal stream={activeStream} onClose={() => setActiveStream(null)} />
+      )}
     </main>
   );
 }
+
+
