@@ -1,12 +1,11 @@
 """
 Core PCAP analysis module for SecureMailScope
-Full pipeline: PCAP → Detection → TLS → Certs → Security → AI Intelligence → Risk
-Uses tshark directly for maximum speed and FastAPI compatibility
+Full pipeline: PCAP → Detection → Structured TCP Streams → TLS → Multi-Tier Cert Chains → Deterministic Security Engine → AI Threat Intelligence → Risk Posture
 """
 
 import subprocess
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from datetime import datetime
 import json
 import hashlib
@@ -20,7 +19,7 @@ from services.gemini_service import GeminiSecurityAssistant
 
 
 class EmailPCAPAnalyzer:
-    """Full PCAP analysis pipeline for email security assessment"""
+    """Full PCAP analysis pipeline for email security forensics and PKI assessment"""
 
     EMAIL_PORTS = {
         25: 'SMTP',
@@ -37,8 +36,10 @@ class EmailPCAPAnalyzer:
         self.pcap_path = Path(pcap_path)
         self.email_packets = []
         self.sessions = []
+        self.tcp_streams: Dict[str, Dict] = {}
         self.tls_handshakes = []
         self.certificates = []
+        self.certificate_chains = []
         self.tshark = TSharkHelper()
         self.ai_assistant = GeminiSecurityAssistant()
 
@@ -46,45 +47,45 @@ class EmailPCAPAnalyzer:
             raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
 
     def analyze(self) -> Dict:
-        """Full analysis pipeline"""
+        """Full forensic analysis pipeline"""
         print(f"\n{'='*70}")
-        print(f"  SecureMailScope — Email Security Analysis")
+        print(f"  SecureMailScope — Forensic Email & Cryptographic Assessment")
         print(f"  File: {self.pcap_path.name}")
         print(f"{'='*70}\n")
 
         try:
             # Step 1: TLS handshakes
             print("[1/7] Extracting TLS handshakes...")
-            self.tls_handshakes = self.tshark.extract_tls_handshakes(
-                str(self.pcap_path)
-            )
+            self.tls_handshakes = self.tshark.extract_tls_handshakes(str(self.pcap_path))
             print(f"       Found {len(self.tls_handshakes)} TLS handshakes")
 
-            # Step 2: Email packets (using tshark directly)
+            # Step 2: Email packets (using structured tshark fields)
             print("[2/7] Detecting email protocols...")
             self._extract_email_packets()
             print(f"       Found {len(self.email_packets)} email packets")
 
-            # Step 3: Sessions
-            print("[3/7] Reconstructing sessions...")
+            # Step 3: Structured TCP Streams & Sessions
+            print("[3/7] Reconstructing bidirectional TCP conversation streams...")
+            self.tcp_streams = self.tshark.extract_structured_tcp_streams(str(self.pcap_path))
             self._reconstruct_sessions()
             self._link_tls_to_sessions()
-            print(f"       Reconstructed {len(self.sessions)} sessions")
+            print(f"       Reconstructed {len(self.sessions)} sessions across {len(self.tcp_streams)} TCP streams")
 
-            # Step 4: Certificates
-            print("[4/7] Extracting certificates...")
-            self.certificates = CertificateAnalyzer.extract_certificates(
-                str(self.pcap_path)
-            )
-            print(f"       Extracted {len(self.certificates)} certificates")
+            # Step 4: Multi-Tier Certificate Chains & PKI
+            print("[4/7] Extracting X.509 presented chains & validating trust paths...")
+            self.certificate_chains = CertificateAnalyzer.extract_and_analyze_chains(str(self.pcap_path))
+            self.certificates = CertificateAnalyzer.extract_certificates(str(self.pcap_path))
+            print(f"       Extracted {len(self.certificates)} unique certificates ({len(self.certificate_chains)} handshake chains)")
 
-            # Step 5: Security checks
-            print("[5/7] Running security checks...")
+            # Step 5: Deterministic Security Engine
+            print("[5/7] Running deterministic security & PKI compliance checks...")
             analysis_data = {
                 'summary': self._generate_summary(),
                 'sessions': self.sessions,
                 'tls_handshakes': self.tls_handshakes,
-                'certificates': self.certificates
+                'certificates': self.certificates,
+                'certificate_chains': self.certificate_chains,
+                'tcp_streams': self.tcp_streams
             }
             engine = SecurityEngine(analysis_data)
             findings = engine.run_all_checks()
@@ -93,7 +94,7 @@ class EmailPCAPAnalyzer:
             print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
 
             # Step 6: AI-Powered Intelligence Enrichment
-            print("[6/7] Generating AI Explanations & Threat Intelligence...")
+            print("[6/7] Generating AI Threat Intelligence & Contextual Guidance...")
             for finding in findings:
                 ai_meta = self.ai_assistant.explain_finding(finding)
                 finding['ai_explanation'] = ai_meta.get('ai_explanation', '')
@@ -105,7 +106,7 @@ class EmailPCAPAnalyzer:
             print("       AI Threat Intelligence generated successfully")
 
             # Step 7: Compile results
-            print("[7/7] Compiling results...\n")
+            print("[7/7] Compiling results payload...\n")
             summary = analysis_data['summary']
             summary['risk_score'] = risk['risk_score']
             summary['risk_level'] = risk['risk_level']
@@ -120,6 +121,8 @@ class EmailPCAPAnalyzer:
                 'risk': risk,
                 'sessions': self._clean_sessions(),
                 'certificates': self.certificates,
+                'certificate_chains': self.certificate_chains,
+                'tcp_streams': self.tcp_streams,
                 'tls_handshakes': self.tls_handshakes
             }
 
@@ -137,7 +140,7 @@ class EmailPCAPAnalyzer:
             }
 
     def _extract_email_packets(self):
-        """Extract email-related packets using tshark (fast & async-safe)"""
+        """Extract email-related packets using tshark"""
         filter_expr = (
             "tcp.port==25 || tcp.port==587 || tcp.port==465 || "
             "tcp.port==2525 || tcp.port==110 || tcp.port==995 || "
@@ -151,6 +154,7 @@ class EmailPCAPAnalyzer:
             '-T', 'json',
             '-e', 'frame.number',
             '-e', 'frame.time',
+            '-e', 'tcp.stream',
             '-e', 'ip.src',
             '-e', 'ip.dst',
             '-e', 'tcp.srcport',
@@ -183,6 +187,7 @@ class EmailPCAPAnalyzer:
                     self.email_packets.append({
                         'number': layers.get('frame.number', [''])[0],
                         'timestamp': layers.get('frame.time', [''])[0],
+                        'tcp_stream': layers.get('tcp.stream', ['0'])[0],
                         'src': layers.get('ip.src', [''])[0] or 'N/A',
                         'dst': layers.get('ip.dst', [''])[0] or 'N/A',
                         'src_port': src_port,
@@ -191,15 +196,11 @@ class EmailPCAPAnalyzer:
                         'length': int(layers.get('frame.len', ['0'])[0]),
                         'encrypted': protocol in ['SMTPS', 'IMAPS', 'POP3S']
                     })
-        except FileNotFoundError:
-            raise RuntimeError(
-                "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
-            )
         except Exception as e:
             print(f"       [!] Packet extraction error: {e}")
 
     def _reconstruct_sessions(self):
-        """Group packets into sessions"""
+        """Group packets into sessions and attach tcp_stream ID"""
         session_map = {}
 
         for pkt in self.email_packets:
@@ -210,8 +211,10 @@ class EmailPCAPAnalyzer:
             key = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
 
             if key not in session_map:
+                stream_id_val = int(pkt.get('tcp_stream', 0)) if str(pkt.get('tcp_stream', '')).isdigit() else 0
                 session_map[key] = {
                     'id': f"session_{len(session_map) + 1}",
+                    'stream_id': stream_id_val,
                     'protocol': pkt['protocol'],
                     'src': pkt['src'],
                     'dst': pkt['dst'],
@@ -257,6 +260,7 @@ class EmailPCAPAnalyzer:
         for s in self.sessions:
             clean.append({
                 'id': s['id'],
+                'stream_id': s.get('stream_id', 0),
                 'protocol': s['protocol'],
                 'src': f"{s['src']}:{s['src_port']}",
                 'dst': f"{s['dst']}:{s['dst_port']}",
@@ -288,8 +292,10 @@ class EmailPCAPAnalyzer:
             )),
             'tls_versions': tls_versions,
             'session_count': len(self.sessions),
+            'stream_count': len(self.tcp_streams),
             'handshake_count': len(self.tls_handshakes),
-            'certificate_count': len(self.certificates)
+            'certificate_count': len(self.certificates),
+            'certificate_chains_count': len(self.certificate_chains)
         }
 
     def _generate_capture_id(self) -> str:
@@ -297,36 +303,37 @@ class EmailPCAPAnalyzer:
         return hashlib.md5(f"{self.pcap_path.name}_{ts}".encode()).hexdigest()[:12]
 
     def _print_report(self, result):
-        """Print formatted report to console"""
-        summary = result['summary']
-        risk = result['risk']
-        findings = result['findings']
-        ai_summary = result.get('ai_summary', '')
+        try:
+            summary = result['summary']
+            risk = result['risk']
+            findings = result['findings']
+            ai_summary = result.get('ai_summary', '')
 
-        print(f"{'='*70}")
-        print(f"  SECURITY ASSESSMENT REPORT")
-        print(f"{'='*70}")
-        print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}]")
-        print(f"  Email Packets: {summary['total_packets']}")
-        print(f"  Encrypted: {summary['encrypted_packets']}  |  Plaintext: {summary['plaintext_packets']}")
-        print(f"  Protocols: {', '.join(summary['protocols_detected']) or 'None'}")
-        print(f"  TLS Versions: {', '.join(summary['tls_versions'].keys()) or 'None'}")
-        
-        if ai_summary:
-            print(f"\n  🤖 AI EXECUTIVE BRIEFING:")
-            print(f"  {ai_summary}")
+            print(f"{'='*70}")
+            print(f"  SECURITY ASSESSMENT REPORT")
+            print(f"{'='*70}")
+            print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}]")
+            print(f"  Email Packets: {summary['total_packets']}")
+            print(f"  Encrypted: {summary['encrypted_packets']}  |  Plaintext: {summary['plaintext_packets']}")
+            print(f"  Protocols: {', '.join(summary['protocols_detected']) or 'None'}")
+            print(f"  TLS Versions: {', '.join(summary['tls_versions'].keys()) or 'None'}")
+            
+            if ai_summary:
+                print(f"\n  [AI] EXECUTIVE BRIEFING:")
+                print(f"  {ai_summary}")
 
-        if findings:
-            print(f"\n  {'─'*66}")
-            print(f"  FINDINGS & AI INSIGHTS ({len(findings)})")
-            print(f"  {'─'*66}")
-            for f in findings:
-                icon = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢'}.get(f['severity'], '⚪')
-                print(f"\n  {icon} [{f['severity']}] {f['title']}")
-                print(f"     Evidence: {f['evidence']}")
-                if f.get('ai_explanation'):
-                    print(f"     🤖 AI Analysis: {f['ai_explanation']}")
-        else:
-            print(f"\n  ✅ No security issues detected!")
+            if findings:
+                print(f"\n  {'─'*66}")
+                print(f"  FINDINGS & PKI FORENSICS ({len(findings)})")
+                print(f"  {'─'*66}")
+                for f in findings:
+                    print(f"\n  [{f['severity']}] {f['title']}")
+                    print(f"     Evidence: {f['evidence']}")
+                    if f.get('ai_explanation'):
+                        print(f"     [AI] Analysis: {f['ai_explanation']}")
+            else:
+                print(f"\n  [+] No security issues detected!")
 
-        print(f"\n{'='*70}\n")
+            print(f"\n{'='*70}\n")
+        except Exception as pe:
+            print(f"[!] Warning: Console printing encountered formatting issue: {pe}")

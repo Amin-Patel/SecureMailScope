@@ -1,0 +1,153 @@
+# SecureMailScope — Real Dataset / Public Capture Benchmark Inventory
+
+**Scope:** This tracker covers (1) small, controlled public captures with known feature coverage and (2) realistic public traffic corpora for broader validation. It records what they can demonstrate today and, just as importantly, what they cannot yet validate. It is an editable working inventory, not a claim that every requirement has real-data coverage.
+
+## Status key
+
+| Status | Meaning |
+| --- | --- |
+| **Have** | Confirmed coverage in one or more captures in this inventory. |
+| **Partial** | Some evidence is available, but the capture does not reliably cover every part of the requirement. |
+| **Need** | Relevant scenario is required, but is not supplied by these three captures. |
+| **Missing** | No evidence can be expected from the current public-capture set. |
+
+## Confirmed real public captures
+
+| ID | Public direct download | Content and intended SecureMailScope use |
+| --- | --- | --- |
+| B01 | [`smtp.pcap`](https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures/smtp.pcap) | A small, plain SMTP capture. Use it as the baseline upload test for packet metadata, TCP session reconstruction, SMTP command recognition, and the **plaintext SMTP** finding. It is deliberately simple; it does not provide TLS or certificate evidence. |
+| B02 | [`sample-imf.pcap.gz`](https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures/sample-imf.pcap.gz) | SMTP carrying Internet Message Format (IMF) data with MIME multipart content. Use it for reconstructing message headers, sender/recipient evidence where exposed, subject/content metadata, MIME boundaries, and content-type handling. The file is gzip-compressed and must be accepted directly or decompressed before parsing, depending on the upload pipeline. |
+| B03 | [`sample-TNEF.pcap.gz`](https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures/sample-TNEF.pcap.gz) | SMTP, IMF, and MIME multipart traffic containing **two attachments**. Use it to test attachment detection and metadata extraction, along with the B02 message/MIME checks. It is not a TLS or certificate benchmark. |
+
+### Practical first-run order
+
+1. Upload **B01** to validate PCAP ingestion, flow building, SMTP detection, and the plaintext-transport finding.
+2. Upload **B02** to validate message and MIME reconstruction.
+3. Upload **B03** to validate attachment extraction without opening or executing attachments.
+
+> Treat all PCAP payloads and recovered attachments as untrusted evidence. Extract metadata in an isolated analysis workflow; do not execute recovered files.
+
+## Realistic public traffic corpora
+
+These complement B01–B03. They are not small feature fixtures: use them to test protocol discovery, email-flow selection, session reconstruction, and resilience in mixed traffic. Before marking a capability **Have**, download and inspect the selected PCAP slice and save the precise file name, checksum, and expected evidence in this tracker.
+
+| ID | Dataset / official page | Expected relevance to SecureMailScope | Practical use and limitation |
+| --- | --- | --- | --- |
+| B09 | [ISCXTor2016 — Canadian Institute for Cybersecurity / UNB](https://www.unb.ca/cic/datasets/tor.html) | The email category includes SMTP/S, POP3/SSL, and IMAP/SSL traffic produced using Thunderbird and Gmail accounts, offering more realistic email traffic than small sample captures. | Candidate corpus for SMTP(S), POP3S, IMAPS, TLS-session, and flow-data testing. Select only email-related PCAPs/flow files and inspect them before expecting particular TLS/certificate fields. |
+| B10 | [CIC-IDS2017 — Canadian Institute for Cybersecurity / UNB](https://www.unb.ca/cic/datasets/ids-2017.html) | A large labelled mixed-traffic dataset with PCAP payloads and flow data. Its traffic-generation profile includes SMTP, IMAP, and POP3 alongside HTTP, SSH, FTP, and other traffic. | Test that SecureMailScope finds and reconstructs email-related flows while ignoring unrelated traffic. Do **not** download the full corpus for a prototype; identify and retain relevant PCAP slices only. |
+| B11 | [CSE-CIC-IDS2018 — Canadian Institute for Cybersecurity / UNB](https://www.unb.ca/cic/datasets/ids-2018.html) | Includes SMTP, POP3, and IMAP traffic. Its Infiltration scenario is relevant to email-delivered malicious-file and post-delivery forensic investigation. | Candidate corpus for mixed-email and attack-context testing. Validate the exact scenario/PCAP before claiming a recoverable malicious attachment or a specific email-forensics result. |
+
+### Two-part benchmark strategy
+
+| Dataset type | Question it answers | Sources in this tracker |
+| --- | --- | --- |
+| **Controlled capability captures** | “Can the parser reliably detect a specific protocol feature or reconstruct a specific artefact?” | B01 `smtp.pcap`, B02 `sample-imf.pcap.gz`, B03 `sample-TNEF.pcap.gz` |
+| **Realistic traffic corpus** | “Does SecureMailScope still find email traffic, build sessions, and behave correctly in noisy, realistic captures?” | B09 ISCXTor2016, B10 CIC-IDS2017, B11 CSE-CIC-IDS2018 |
+
+## Benchmark coverage matrix
+
+The source column names evidence expected from the listed public sources. B09–B11 are marked **Partial** unless a specific downloaded PCAP has been inspected; their public dataset descriptions identify candidate coverage, not a guarantee that every capture contains every field. “Need” and “Missing” rows are deliberate gaps that should later be filled by additional real captures or controlled, ground-truth test captures.
+
+### 1. Network / PCAP metadata
+
+| Requirement | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| Source IP | Have | B01, B02, B03 | IPv4/IPv6 source addresses from packet headers. |
+| Destination IP | Have | B01, B02, B03 | Destination addresses from packet headers. |
+| Source port | Have | B01, B02, B03 | TCP source-port evidence. |
+| Destination port | Have | B01, B02, B03 | TCP destination-port evidence; do not rely on port alone for protocol identification. |
+| Protocol | Have | B01, B02, B03 | Ethernet/IP/TCP/SMTP and message-layer dissections where available. |
+| Packet count | Have | B01, B02, B03 | Total and per-flow packet counts. |
+| Packet sizes | Have | B01, B02, B03 | Frame/captured lengths and per-flow size statistics. |
+| Timestamps | Have | B01, B02, B03 | Packet timestamps; use capture time as the evidence timeline. |
+| TCP conversations | Have | B01, B02, B03 | TCP 5-tuples, stream IDs, SYN/FIN/RST evidence where present. |
+| Flow/session information | Have | B01, B02, B03 | Reconstruct client/server direction, duration, packets, bytes, and SMTP conversation. |
+
+### 2. Email protocol information
+
+| Requirement | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| SMTP | Have | B01, B02, B03 | SMTP conversation and commands/data. |
+| SMTPS (implicit TLS) | Partial | B09 candidate corpus | Dataset category identifies SMTP/S; inspect selected capture for implicit-TLS evidence. |
+| IMAP | Partial | B10, B11 candidate corpora | Dataset traffic profiles include IMAP; inspect selected PCAP slice. |
+| IMAPS | Partial | B09 candidate corpus | Dataset category identifies IMAP/SSL; inspect selected capture and handshake. |
+| POP3 | Partial | B10, B11 candidate corpora | Dataset traffic profiles include POP3; inspect selected PCAP slice. |
+| POP3S | Partial | B09 candidate corpus | Dataset category identifies POP3/SSL; inspect selected capture and handshake. |
+| SMTP standard-port detection | Partial | B01, B02, B03 | SMTP is present; record observed port from the PCAP rather than assuming a fixed port. |
+| SMTP on non-standard port | Need | — | Requires a dedicated SMTP/TLS or SMTP capture on a port such as 2525. |
+| STARTTLS usage | Missing | — | Needs a visible `STARTTLS` command followed by a TLS handshake. |
+
+### 3. TLS handshake extraction
+
+| Requirement | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| TLS version | Partial | B09 candidate corpus | SSL/TLS email categories make this a candidate; inspect an actual handshake. |
+| ClientHello | Partial | B09 candidate corpus | Needs a selected PCAP that begins before the handshake. |
+| ServerHello | Partial | B09 candidate corpus | Needs a selected PCAP that includes server response. |
+| Cipher suite | Partial | B09 candidate corpus | Extract only from a complete visible negotiation. |
+| TLS extensions | Partial | B09 candidate corpus | Expected primarily in ClientHello/ServerHello; depends on capture completeness. |
+| Supported groups | Partial | B09 candidate corpus | ClientHello extension evidence required. |
+| Signature algorithms | Partial | B09 candidate corpus | ClientHello signature-algorithms extension required. |
+| Key-exchange information | Partial | B09 candidate corpus | Depends on TLS version and visible handshake fields. |
+| Server certificate | Partial | B09 candidate corpus | Requires a handshake that transmits a certificate. |
+| Handshake sequence | Partial | B09 candidate corpus | Requires all relevant packets in chronological order. |
+| Modern vs. outdated cryptography assessment | Need | — | Needs at least one TLS capture plus explicit security policy/rules. |
+
+### 4. X.509 certificate extraction
+
+| Requirement | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| Subject | Partial | B09 candidate corpus | Extract from a selected TLS server certificate. |
+| Issuer | Partial | B09 candidate corpus | Extract from a selected TLS server certificate. |
+| Serial number | Partial | B09 candidate corpus | Extract from a selected TLS server certificate. |
+| Valid from | Partial | B09 candidate corpus | Certificate `notBefore`; preserve capture/evaluation-time context. |
+| Valid until | Partial | B09 candidate corpus | Certificate `notAfter`; preserve capture/evaluation-time context. |
+| Public-key algorithm | Partial | B09 candidate corpus | E.g., RSA or EC from Subject Public Key Info. |
+| Public-key size | Partial | B09 candidate corpus | E.g., RSA modulus length; may not apply identically to EC keys. |
+| Signature algorithm | Partial | B09 candidate corpus | Certificate signature algorithm. |
+| Subject Alternative Names (SANs) | Partial | B09 candidate corpus | SAN extension, if present. |
+| Self-signed status | Partial | B09 candidate corpus | Requires subject/issuer and cryptographic verification where possible. |
+| Certificate-chain information where observable | Partial | B09 candidate corpus | Record only certificates actually sent by the server; do not infer an unseen chain. |
+| Expired certificate | Need | — | Requires a capture with a known expired certificate and a defined evaluation time. |
+| Not-yet-valid certificate | Need | — | Requires a capture with a certificate whose `notBefore` is after the evaluation time. |
+
+### 5. Cryptographic security assessment
+
+| Check / expected finding | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| TLS 1.0 or other outdated TLS version detected | Need | — | Requires controlled or documented TLS legacy capture. |
+| Weak cipher detected | Need | — | Requires negotiated weak-cipher evidence and a maintained policy list. |
+| Weak key size, e.g. RSA-1024 | Need | — | Requires a certificate with the relevant public-key size. |
+| Expired certificate | Need | — | Requires certificate validity dates plus an explicit reference time. |
+| Self-signed certificate | Need | — | Requires a TLS certificate scenario. |
+| STARTTLS not negotiated | Partial | B01, B02, B03 | Plain SMTP can demonstrate no observed TLS negotiation, but classify carefully: a capture alone may not prove the server offered STARTTLS. |
+| Plaintext SMTP | Have | B01, B02, B03 | SMTP commands/message content are visible without an intervening TLS handshake. |
+| Forward secrecy not supported / not observable | Need | — | Needs negotiated cipher/key-exchange evidence; TLS 1.3 requires different handling from TLS 1.2. |
+| Weak or deprecated certificate signature algorithm | Need | — | Requires certificate signature evidence, e.g. a legacy SHA-1 scenario. |
+| Encryption present / absent determination | Partial | B01, B02, B03; B09 candidate corpus | Plaintext evidence is confirmed; B09 is a candidate encrypted comparison pending PCAP inspection. |
+
+### 6. Email-forensics extraction
+
+| Requirement | Status | Source / capture | Notes / expected evidence |
+| --- | --- | --- | --- |
+| Sender | Partial | B02, B03 (also B01 where visible) | Extract SMTP `MAIL FROM` and/or visible message headers; retain which source supplied it. |
+| Recipient(s) | Partial | B02, B03 (also B01 where visible) | Extract `RCPT TO`; headers may differ from envelope recipients. |
+| CC / BCC where observable | Partial | B02, B03 | `Cc` can exist in visible headers; `Bcc` is normally absent from delivered headers and cannot be assumed. |
+| Email subject | Partial | B02, B03 | Extract visible `Subject` header; availability depends on message content. |
+| Message headers | Have | B02, B03 | IMF header reconstruction, including preservation of raw evidence. |
+| MIME boundaries | Have | B02, B03 | Multipart boundary parameters and delimiting lines. |
+| Content type | Have | B02, B03 | `Content-Type` headers and multipart part types. |
+| Attachment names | Have | B03 | Expected from MIME/TNEF attachment metadata; report only names actually recovered. |
+| Attachment metadata | Have | B03 | MIME disposition/content type, encoded size, and safe hashes where recoverable. |
+| Message timestamps | Partial | B01, B02, B03 | Capture timestamps are reliable PCAP evidence; `Date` headers may be sender-supplied and must be labelled separately. |
+| SMTP authentication indicators | Partial | B01, B02, B03 | Detect visible `AUTH` commands if present; current capture set is not a guaranteed SMTP AUTH test. |
+| SMTP command timeline (`EHLO`, `MAIL FROM`, `RCPT TO`, `DATA`, `QUIT`) | Partial | B01, B02, B03 | Extract commands when visible in each TCP stream; command availability varies by capture. |
+| Message body / MIME-part reconstruction | Partial | B02, B03 | Plaintext MIME payload can be reconstructed where TCP reassembly succeeds; do not claim recovery from encrypted traffic. |
+| Malicious email evidence | Partial | B11 candidate corpus | The Infiltration scenario is relevant, but an exact inspected PCAP is required before labelling an individual message malicious. |
+| Email-based attack context | Partial | B11 candidate corpus | Correlate only verified email-flow, attachment, and follow-on network evidence; do not infer causation from dataset labels alone. |
+
+## Current benchmark conclusion
+
+The controlled files give SecureMailScope a solid **real public baseline for plaintext SMTP, network/session analysis, IMF/MIME extraction, and attachment metadata**. ISCXTor2016, CIC-IDS2017, and CSE-CIC-IDS2018 add realistic traffic and candidate TLS, encrypted-email, mixed-protocol, and email-attack coverage, but exact PCAP slices must be inspected before they are treated as confirmed evidence.
+
+The next benchmark expansion should add real TLS email captures and carefully controlled PCAPs with known ground truth for certificate and cryptographic findings. Each future capture should be added here with its direct source, expected findings, and a small validation manifest.
