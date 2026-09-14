@@ -18,6 +18,8 @@ from fastapi.responses import JSONResponse, HTMLResponse, Response
 # Import analysis pipeline & reporting engine
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
 from app.services.report_generator import ReportGenerator
+from app.services.knowledge_base import get_knowledge_base
+from app.services import knowledge_ingestion
 
 # ΓöÇΓöÇΓöÇ APP SETUP ΓöÇΓöÇΓöÇ
 app = FastAPI(
@@ -247,7 +249,59 @@ async def delete_analyses_batch(req: BatchDeleteRequest):
     }
 
 
-# ─── 8. STREAM RETRIEVAL ───
+# ─── 8. KNOWLEDGE BASE (RAG) ───
+@app.get("/api/knowledge/sources")
+async def list_knowledge_sources():
+    """List reference documents currently live in the retrieval index."""
+    kb = get_knowledge_base()
+    return {"sources": kb.list_sources()}
+
+
+@app.get("/api/knowledge/gaps")
+async def list_knowledge_gaps():
+    """List finding types where retrieval has come back empty or below the confidence threshold."""
+    return {"gaps": knowledge_ingestion.list_gaps()}
+
+
+@app.post("/api/knowledge/gaps/{finding_type}/propose")
+async def propose_knowledge_source(finding_type: str):
+    """Draft a candidate reference document for a coverage gap via Gemini.
+    Lands in the pending review queue -- does not go live until approved."""
+    try:
+        draft_path = knowledge_ingestion.propose_source_for_gap(finding_type)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"success": True, "finding_type": finding_type, "draft_path": str(draft_path)}
+
+
+@app.get("/api/knowledge/pending")
+async def list_pending_knowledge_sources():
+    """List AI-drafted reference documents awaiting human approval."""
+    return {"pending": knowledge_ingestion.list_pending()}
+
+
+@app.post("/api/knowledge/pending/{finding_type}/approve")
+async def approve_pending_knowledge_source(finding_type: str):
+    """Publish an approved draft into the live retrieval index."""
+    try:
+        chunk_count = knowledge_ingestion.approve_pending(finding_type)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"success": True, "finding_type": finding_type, "chunks_ingested": chunk_count}
+
+
+@app.delete("/api/knowledge/pending/{finding_type}")
+async def reject_pending_knowledge_source(finding_type: str):
+    """Discard a pending draft without publishing it."""
+    deleted = knowledge_ingestion.reject_pending(finding_type)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No pending draft for finding_type: {finding_type}")
+    return {"success": True, "finding_type": finding_type, "message": "Draft discarded."}
+
+
+# ─── 9. STREAM RETRIEVAL ───
 @app.get("/api/analysis/{capture_id}/stream/{stream_id}")
 async def get_stream_details(capture_id: str, stream_id: str):
     """Retrieve structured TCP conversation stream by capture_id and stream_id."""
