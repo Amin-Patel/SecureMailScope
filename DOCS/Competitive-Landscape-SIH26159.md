@@ -5,20 +5,27 @@
 SecureMailScope is [SIH26159](https://sih.gov.in), an official Smart India
 Hackathon 2026 problem statement sponsored by the National Technical
 Research Organisation (NTRO), theme "Blockchain & Cybersecurity." At least
-28 independent teams have public GitHub repos building their own
-implementation of the same spec. This doc surveys them, verifies which
-README-claimed features actually exist in code (several don't), and
-prioritizes what's worth building into **our** repo
+35+ independent teams have public GitHub repos building their own
+implementation of the same spec, and the field is moving fast — see the
+update log below. This doc surveys them, verifies which README-claimed
+features actually exist in code (several don't), and prioritizes what's
+worth building into **our** repo
 ([Amin-Patel/SecureMailScope](https://github.com/Amin-Patel/SecureMailScope))
 next.
 
 **Method:** `gh search repos "SecureMailScope"`, then for each repo with
 non-trivial size, fetched the README and full file tree via the GitHub API
 and spot-checked source files directly for any feature claimed in a README
-— READMEs are marketing copy, source files are the ground truth. ~16 of 28
-repos had enough content to be worth reading; the rest are empty scaffolds,
-boilerplate templates, or single-commit stubs (listed at the bottom for
-completeness).
+— READMEs are marketing copy, source files are the ground truth.
+
+## Update log
+
+- **2026-09-09**: initial survey, ~16 of 28 repos worth reading.
+- **2026-09-16**: re-checked. Several repos that were empty scaffolds a
+  week ago are now the most sophisticated implementations in the field —
+  see "New/escalated since last survey" below. The pace here is fast:
+  don't treat this doc as static, re-run the method above before relying
+  on any "we're ahead" claim.
 
 ---
 
@@ -61,14 +68,38 @@ built beyond it.
 | [xarjunpatil/SIH26159-...](https://github.com/xarjunpatil/SIH26159-SecureMailScope-AI-Assisted-Cryptographic-Security-Posture-Assessment-for) | — | Carries the literal official `problem_statement.json` — used as this doc's spec source, not a competing implementation |
 | [BatthulaRajeswari](https://github.com/BatthulaRajeswari/SecureMailScope), [Arulesh-08](https://github.com/Arulesh-08/securemailscope), [bikramjitsamanta10-creator](https://github.com/bikramjitsamanta10-creator/SecureMailScope), [thanmaikrishnakelam-dot](https://github.com/thanmaikrishnakelam-dot/SecureMailScope), [sharanaks](https://github.com/sharanaks/SecureMailScope)/[Impana-Prakash](https://github.com/Impana-Prakash/SecureMailScope) (near-identical, likely shared template) | Python, small | Single-file or few-file prototypes (`analyzer.py`, `mock_scoring.py`, `ai_engine.py`) — early-stage, nothing beyond what we already have |
 
+## New / escalated since last survey (2026-09-16 update)
+
+The single biggest change: **AI/ML risk scoring and anomaly detection —
+Tier 1 item #2/#3 below — went from "nobody has really built this" to
+"multiple teams have working, tested, committed models" in one week.**
+This is no longer a theoretical spec requirement; it's a demonstrated,
+shipped capability elsewhere.
+
+| Repo | Stack | What's real |
+|---|---|---|
+| [TeamPort587/SecureMailScope](https://github.com/TeamPort587/SecureMailScope) | Python/Django | Was an empty `.gitkeep` scaffold on 09-09; is now, by a wide margin, **the most rigorous ML engineering of any repo surveyed**. A `ml/training/` pipeline with ablation studies (`ablation.py`), cross-validation, a leakage audit (`leakage_audit.py` — actively checks the model isn't cheating on held-out data), robustness evaluation against partial captures, confidence calibration, a "perfect model audit" (flags suspiciously-perfect scores as a leakage smell), model-selection policy, and a **13-file dedicated ML test suite** (`tests/ml/`). A real committed model (`ml/artifacts/risk_model.joblib`) plus a full report bundle (confusion matrix, feature importances, cross-validation report). Also runs a local LLM via Ollama (`ollama/Modelfile`) rather than a cloud API. This is the bar to know about even if not fully matched. |
+| [saravana-rr0411/SecureMailScope](https://github.com/saravana-rr0411/SecureMailScope) | Python + React | New (first seen 09-11, still actively growing). Explicit architectural separation of deterministic rules / unsupervised anomaly detection / supervised risk scoring. `crypto_risk_scorer.py`: a `RandomForestClassifier` over a genuinely large engineered feature vector (protocol layer, STARTTLS state, TLS version, cipher AEAD/CBC characterization). `anomaly_detector.py` alongside it. **A 1.4MB trained model file actually committed** (`crypto_risk_model.joblib`) and a full per-module test suite. |
+| [S-Vetrivel/SecureMailScope-SIH](https://github.com/S-Vetrivel/SecureMailScope-SIH) | **Go (parser + API) + Python (AI)** | The only repo surveyed using Go (`gopacket`) for packet parsing and Gin+PostgreSQL for the API — a deliberate performance-oriented architecture choice none of the Python-only teams made. AI engine explicitly uses **XGBoost + IsolationForest** (gradient boosting, not just Random Forest) plus a dedicated `remediation.py` for AI-driven fix suggestions. |
+| [gouravsehlangia/SecureMailScope](https://github.com/gouravsehlangia/SecureMailScope) | Python | Grew from a 22KB stub to 926KB. Real `sklearn.IsolationForest` anomaly detection over an 8-feature vector (TLS version, cipher, key exchange, protocol, STARTTLS, forward secrecy, cert expiry, chain validity). Also built something genuinely novel: `keylog_manager.py` parses **NSS SSLKEYLOGFILE** data to decrypt TLS 1.3 handshakes and recover the Certificate message — solving the "TLS 1.3 hides certs from passive analysis" limitation that every other team (us included) just documents as unavoidable. Only works if session keys were captured (e.g. a demo/test environment with `SSLKEYLOGFILE` set), so it doesn't help against arbitrary real-world captures, but it's a legitimately clever answer to a limitation we've been treating as a hard wall. |
+| [dhanush-girish/securemailscope](https://github.com/dhanush-girish/securemailscope) | Python | New (09-16). Explicit two-phase framing: "Phase 1 capture & parsing" feeding a "Phase 2 AI/ML pipeline" with a live dashboard. Worth a closer look once it matures further. |
+| [ashwini-1608/SecureMailScope](https://github.com/ashwini-1608/SecureMailScope) | Python | New (09-15). Frames its goal as detecting *deviations from a server's own usual cryptographic behavior* rather than generic anomaly detection — a per-server baseline framing, more sophisticated than a flat classifier. Heavy investment in synthetic TLS test fixtures (multiple `.pcapng` scenarios covering TLS 1.2/1.3, multi-session captures). |
+| [pm534485/SecureMailScope](https://github.com/pm534485/SecureMailScope) | Python | New (09-15), early-stage but has `backend/ml/training.py` + `inference.py` as a dedicated split from day one. |
+| [ganeshparmarit-lgtm/securemailscope](https://github.com/ganeshparmarit-lgtm/securemailscope) | **Java (Spring Boot)** | New (09-11), currently just the default Spring Boot bootstrap — no real feature code yet. Notable only as the first entirely different-language entrant (everyone else is Python/Node/Go). |
+
 ## Repos checked and confirmed trivial (empty scaffold, template boilerplate, or `node_modules` accidentally committed with no real backend logic)
 
-`Atharva006`, `kris-5710`, `TeamPort587` (all-`.gitkeep` planned structure),
-`akshaymede` (committed `node_modules`, no real source), `tejaswini7-bit`
-(README only, ".zip.zip" placeholder), `CodeWithSantoshM07`,
-`tatikondasai2006-debug/SecureEmailScope` (a zip file, unopened),
-`tatikondasai2006-debug/-SecureMailScope-`, `Daddy-Dagger` (governance
-files only — CODEOWNERS, CONTRIBUTING — no implementation yet), `Shrihare7734`.
+`Atharva006`, `kris-5710`, `akshaymede` (committed `node_modules`, no real
+source), `tejaswini7-bit` (README only, ".zip.zip" placeholder),
+`CodeWithSantoshM07`, `tatikondasai2006-debug/SecureEmailScope` (a zip
+file, unopened), `tatikondasai2006-debug/-SecureMailScope-`,
+`Daddy-Dagger` (governance files only — CODEOWNERS, CONTRIBUTING — no
+implementation yet), `Shrihare7734`, `Jxgxn-007` (empty repo),
+`thanmaikrishnakelam-dot/SecureMailScope-V2` and
+`-_webDashboard` (tiny spinoffs, not substantial),
+`ganeshparmarit-lgtm` (see table above — real stack choice, no real
+content yet). Note `TeamPort587` **moved out of this list** this update —
+see above.
 
 ---
 
@@ -79,25 +110,50 @@ build here).
 
 ### Tier 1 — Do next (explicitly spec-required, verified real elsewhere, we're missing it)
 
-1. **Fix the certificate pipeline** (not a competitor feature — our own
-   confirmed-dead code, see
-   [`Bugs-Found-and-Fixed.md`](Bugs-Found-and-Fixed.md)). This blocks 4 of
-   our checks *and* every cert-dependent feature below it. Do this before
-   anything else on this list, or the next two items are built on sand.
-2. **AI/ML risk classifier** — explicitly required by the spec, not just a
-   nice-to-have. Astra-Innovators' `RandomForestClassifier` and
-   geetanshu17-tech's fusion approach are both small, honest, achievable
-   patterns (a handful of engineered features — `legacy_tls`, `weak_cipher`,
-   `no_pfs`, etc. — feeding a shallow classifier). Recommend
-   geetanshu17-tech's fusion rule specifically: **the ML output can only
-   raise a finding's priority, never suppress a rule-confirmed one** —
-   avoids the failure mode where an ML layer silently hides a real
-   deterministic finding.
-3. **AI-assisted anomaly detection** — also explicitly spec-required, also
-   currently absent from our repo. IsolationForest on the same feature
-   vectors used for risk scoring is the path every team that built this
-   took; low marginal effort once the risk-classifier features exist.
-4. **Real PDF export endpoint** — spec explicitly lists PDF as a required
+1. ~~**Fix the certificate pipeline**~~ — **done.** Was our own
+   confirmed-dead code (see [`Bugs-Found-and-Fixed.md`](Bugs-Found-and-Fixed.md)),
+   fixed on `feature/rag-knowledge-base`, then superseded by a teammate's
+   full chain/CA-trust-validation implementation on `main` (see
+   [`Teammate-Deliverables-3-and-4.md`](Teammate-Deliverables-3-and-4.md)).
+   Forward secrecy assessment was also built and is live. Both merged.
+
+2. **AI/ML risk classifier + anomaly detection — now the single most
+   urgent gap, and more urgent than it was a week ago.** We have zero
+   ML-based scoring; every finding is deterministic-rules-only plus an LLM
+   writing prose about it afterward. That was already a spec-required gap
+   on 09-09 when only Astra-Innovators and geetanshu17-tech had attempted
+   it. As of 09-16, at least **five** independent teams have working
+   implementations (see the new-entrants table above), and
+   **TeamPort587's is genuinely production-grade**: ablation studies,
+   cross-validation, a leakage audit, robustness testing against partial
+   captures, and a committed model. We don't need to match that bar to
+   ship something real, but judges comparing submissions side by side will
+   see the gap. Recommended approach, synthesizing what's worked across
+   teams:
+   - A `RandomForestClassifier` (or XGBoost, per S-Vetrivel) over an
+     engineered feature vector — TLS version, cipher AEAD/CBC/weak status,
+     forward secrecy, cert validity/expiry/key-size, STARTTLS state. Every
+     team that built this used broadly the same feature shape; it's a
+     solved sub-problem at this point, not a design risk.
+   - `IsolationForest` on the same feature vectors for anomaly detection —
+     near-zero marginal effort once the risk-classifier features exist.
+   - **Adopt geetanshu17-tech's fusion rule**: the ML output can only
+     *raise* a finding's priority, never suppress a rule-confirmed one —
+     avoids an ML layer silently hiding a real deterministic finding.
+   - If time allows, **borrow TeamPort587's leakage-audit habit** even in
+     miniature — at minimum, confirm the model isn't trivially memorizing
+     the small demo-PCAP feature set it was likely trained on. A model
+     that visibly overfits three demo captures is worse for credibility
+     than no model at all.
+   - Not urgent, but worth knowing about: gouravsehlangia's
+     SSLKEYLOGFILE-based TLS 1.3 decryption is a legitimately clever answer
+     to the "can't see TLS 1.3 certs passively" limitation we currently
+     just document as a hard wall — only useful in controlled demo
+     environments where we control key logging, but worth considering for
+     our own demo-capture generation if we want TLS 1.3 cert findings to
+     work in a live demo.
+
+3. **Real PDF export endpoint** — spec explicitly lists PDF as a required
    export format. We currently only have client-side `window.print()`
    ("Print / Save as PDF"), not a server-generated file. Astra-Innovators'
    `pdf_builder.py` and pitu2k's `pdf_report.py` are both small, proven
