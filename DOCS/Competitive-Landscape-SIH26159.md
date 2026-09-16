@@ -26,6 +26,11 @@ and spot-checked source files directly for any feature claimed in a README
   see "New/escalated since last survey" below. The pace here is fast:
   don't treat this doc as static, re-run the method above before relying
   on any "we're ahead" claim.
+- **2026-09-17**: no new repos or pushes since 09-16 (checked). Dug deeper
+  into three repos' actual source (not just READMEs) that had only been
+  surface-checked before — see the three new Tier 2 items below
+  (server-config remediation snippets, per-server behavioral
+  fingerprinting, live/continuous monitoring architecture).
 
 ---
 
@@ -140,9 +145,24 @@ build here).
    cipher x certificate x STARTTLS combination, labeled by max-severity-wins
    over the same conditions the rule engine already checks), folded
    together with real sessions from our demo captures through the same
-   extraction path — so real PCAPs (ISCXTor2016's actual email-traffic
-   PCAPs, if that registration ever goes through) slot in later with zero
-   rework, they just become more training rows.
+   extraction path — so real PCAPs slot in later with zero rework, they
+   just become more training rows.
+
+   **Update 09-17**: the registration went through and `Tor.zip` (11GB)
+   was downloaded — but it turned out to be a dead end specifically for
+   this purpose. The archive is split by category (a relief — no need to
+   filter an undifferentiated blob), and the four `MAIL_*.pcap` files
+   extract to a manageable ~350MB total, but every one of them is
+   **Tor-anonymized traffic**: every connection is generic port 443 (with
+   Tor's own relay ports 9001/9010 visible in the mix, confirming it),
+   zero TLS SNI, zero visible certificate data. That's Tor working as
+   designed, not a parsing failure — the real destination (Gmail's actual
+   IMAP/POP servers) is hidden inside the encrypted Tor circuit, invisible
+   to a passive capture at the client. The dataset's whole point is Tor-
+   vs-non-Tor traffic classification, so of course the "Tor" scenario
+   routes everything through Tor. What we'd actually need is the
+   **`nonTor`** counterpart on the same CIC page — direct, non-anonymized
+   captures with real visible SNI/certificates. Not yet downloaded.
 
    Applied a real, if miniature, version of **TeamPort587's leakage-audit
    habit** rather than skipping it: deduplicated the combined
@@ -203,6 +223,40 @@ build here).
    capture). This is free to adopt in our existing finding/description text
    and meaningfully strengthens credibility in front of judges who know
    passive analysis' limits.
+9. **Copy-paste server-config remediation, not prose** —
+   [S-Vetrivel](https://github.com/S-Vetrivel/SecureMailScope-SIH)'s
+   `ai_engine/remediation.py` maps each finding to actual Postfix/Dovecot/
+   Nginx/OpenSSL config blocks (e.g. real
+   `smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1`
+   snippets ready to paste into `/etc/postfix/main.cf`), verified in
+   source. Our `remediation` field is numbered prose ("1. Disable SSL 3.0
+   on all mail servers immediately"). This is a genuinely low-effort,
+   high-credibility upgrade — we already know which finding maps to which
+   fix; it's a matter of writing real config syntax instead of English
+   instructions for each of our nine finding types.
+10. **Per-server behavioral fingerprinting** (bigger lift, not a quick
+    add) — [ashwini-1608](https://github.com/ashwini-1608/SecureMailScope)
+    doesn't compare a session against a *global* notion of "risky." It
+    builds a fingerprint per mail server (the observed distribution of TLS
+    version/cipher/forward-secrecy/cert-issuer/key-size across every
+    session seen from that server) and flags deviation from that server's
+    own history:
+    `deviation = 1 - frequency of the observed value in the server's fingerprint`.
+    This would catch a real downgrade attack our (and every other team's)
+    flat IsolationForest could miss — a server that's used TLS 1.3 in
+    every session suddenly showing TLS 1.2 is a strong signal even though
+    TLS 1.2 alone isn't "weak." Requires a persistent per-server profile
+    store; we're currently stateless (one PCAP in, one report out), so
+    this is a real architectural change, not a feature bolt-on.
+11. **Live/continuous monitoring, not just batch upload** (also a bigger
+    lift) — [dhanush-girish](https://github.com/dhanush-girish/securemailscope)
+    built a file watcher (`watch_and_forward.py`) that forwards newly
+    captured sessions into the pipeline automatically, plus a `/history`
+    API and a dashboard that polls for live updates. Every team surveyed,
+    us included, is "upload one PCAP, get one report." This is
+    architecturally closer to the official spec's language about
+    assisting a SOC in real time. Worth knowing about even if a
+    live-capture rebuild isn't realistic before a deadline.
 
 ### Tier 3 — Nice ideas, low priority for us right now
 
