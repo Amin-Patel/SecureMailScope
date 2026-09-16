@@ -117,41 +117,57 @@ build here).
    [`Teammate-Deliverables-3-and-4.md`](Teammate-Deliverables-3-and-4.md)).
    Forward secrecy assessment was also built and is live. Both merged.
 
-2. **AI/ML risk classifier + anomaly detection — now the single most
-   urgent gap, and more urgent than it was a week ago.** We have zero
-   ML-based scoring; every finding is deterministic-rules-only plus an LLM
-   writing prose about it afterward. That was already a spec-required gap
-   on 09-09 when only Astra-Innovators and geetanshu17-tech had attempted
-   it. As of 09-16, at least **five** independent teams have working
-   implementations (see the new-entrants table above), and
-   **TeamPort587's is genuinely production-grade**: ablation studies,
-   cross-validation, a leakage audit, robustness testing against partial
-   captures, and a committed model. We don't need to match that bar to
-   ship something real, but judges comparing submissions side by side will
-   see the gap. Recommended approach, synthesizing what's worked across
-   teams:
-   - A `RandomForestClassifier` (or XGBoost, per S-Vetrivel) over an
-     engineered feature vector — TLS version, cipher AEAD/CBC/weak status,
-     forward secrecy, cert validity/expiry/key-size, STARTTLS state. Every
-     team that built this used broadly the same feature shape; it's a
-     solved sub-problem at this point, not a design risk.
-   - `IsolationForest` on the same feature vectors for anomaly detection —
-     near-zero marginal effort once the risk-classifier features exist.
-   - **Adopt geetanshu17-tech's fusion rule**: the ML output can only
-     *raise* a finding's priority, never suppress a rule-confirmed one —
-     avoids an ML layer silently hiding a real deterministic finding.
-   - If time allows, **borrow TeamPort587's leakage-audit habit** even in
-     miniature — at minimum, confirm the model isn't trivially memorizing
-     the small demo-PCAP feature set it was likely trained on. A model
-     that visibly overfits three demo captures is worse for credibility
-     than no model at all.
-   - Not urgent, but worth knowing about: gouravsehlangia's
-     SSLKEYLOGFILE-based TLS 1.3 decryption is a legitimately clever answer
-     to the "can't see TLS 1.3 certs passively" limitation we currently
-     just document as a hard wall — only useful in controlled demo
-     environments where we control key logging, but worth considering for
-     our own demo-capture generation if we want TLS 1.3 cert findings to
-     work in a live demo.
+2. ~~**AI/ML risk classifier + anomaly detection**~~ — **done**, on
+   `feature/ml-risk-classifier`. A `RandomForestClassifier` + `IsolationForest`
+   over the session-level feature vector recommended below, kept
+   architecturally separate from `SecurityEngine` (the deterministic/
+   unsupervised/supervised split several competing teams converged on
+   independently), with the geetanshu17-tech fusion rule adopted as
+   designed (ML can only raise the risk level, never suppress a
+   rule-confirmed finding).
+
+   Crucially, this could **not** be built on any of the datasets
+   competitors published or that our own teammate sourced (ISCXTor2016's
+   flow-level CSVs turned out to have no TLS/cipher/certificate columns at
+   all — wrong shape for this task, see
+   [`Bugs-Found-and-Fixed.md`](Bugs-Found-and-Fixed.md) if we ever revisit
+   that corpus). We also explicitly ruled out reusing a competitor's
+   trained model or code: this is a judged competition, and shipping
+   another team's artifact is a plagiarism/disqualification risk regardless
+   of the repo being public, on top of being a model we couldn't defend to
+   judges since we didn't build it. Instead, trained on synthetic data
+   distilled from our own `SecurityEngine` rules (every TLS version x
+   cipher x certificate x STARTTLS combination, labeled by max-severity-wins
+   over the same conditions the rule engine already checks), folded
+   together with real sessions from our demo captures through the same
+   extraction path — so real PCAPs (ISCXTor2016's actual email-traffic
+   PCAPs, if that registration ever goes through) slot in later with zero
+   rework, they just become more training rows.
+
+   Applied a real, if miniature, version of **TeamPort587's leakage-audit
+   habit** rather than skipping it: deduplicated the combined
+   synthetic+real dataset before the train/test split (a duplicate row
+   landing in both sets is the actual leakage risk here, not raw accuracy
+   magnitude — labels are a deterministic function of the features, so
+   near-1.0 held-out accuracy is expected, not a smell by itself). Held-out
+   test accuracy 97.6%, with errors concentrated in the low-support
+   LOW/MEDIUM classes as expected, not a suspiciously perfect score.
+   Verified against all three real demo captures, not just synthetic data.
+
+   Building this against real captures also surfaced two real bugs (see
+   `Bugs-Found-and-Fixed.md` #6): the synthetic generator had never
+   actually produced an "unrecognized cipher" training example, and —
+   more significantly — `tshark_helper.py` has been mislabeling every TLS
+   1.3 session as "TLS 1.2" (RFC 8446 freezes the outer record-layer
+   version for TLS 1.3; the real version is in an extension nothing here
+   parses). Worked around in the ML feature extractor and confirmed via a
+   real measured confidence jump (77.9% → 94.2%) once fixed, but still
+   open at the source in `tshark_helper.py`.
+
+   Not pursued: gouravsehlangia's SSLKEYLOGFILE-based TLS 1.3 decryption
+   (clever, but only useful in controlled demo environments where we
+   control key logging — noted here in case we want TLS 1.3 cert findings
+   to work in a live demo later).
 
 3. **Real PDF export endpoint** — spec explicitly lists PDF as a required
    export format. We currently only have client-side `window.print()`

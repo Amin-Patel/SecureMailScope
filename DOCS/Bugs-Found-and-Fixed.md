@@ -1,11 +1,12 @@
 # Bugs Found This Session — Summary
 
 A running log of pre-existing bugs discovered (and, where in scope, fixed)
-while building the RAG knowledge base, the forward-secrecy check, and the
-certificate-pipeline fix on `feature/rag-knowledge-base`. None of these
-were introduced by that work — they predate it — but building real,
-end-to-end-tested features surfaced them because it's the first time this
-pipeline was actually run to completion against real PCAPs in this
+while building the RAG knowledge base, the forward-secrecy check, the
+certificate-pipeline fix (`feature/rag-knowledge-base`), and the ML risk
+classifier (`feature/ml-risk-classifier`). None of these were introduced
+by that work — they predate it — but building real, end-to-end-tested
+features keeps surfacing them, since each new feature is often the first
+thing to actually exercise a given code path against real PCAPs in this
 environment.
 
 ---
@@ -114,6 +115,53 @@ try/except and the emoji characters were replaced with plain-text markers
 [`Teammate-Deliverables-3-and-4.md`](Teammate-Deliverables-3-and-4.md) for
 what else came in on that merge.
 
+### 6. Every TLS 1.3 session is mislabeled "TLS 1.2"
+
+**Where:** `backend/app/utils/tshark_helper.py`, the `version_map` in
+`extract_tls_handshakes()`
+
+**Severity: worth fixing at the source, not just worked around.**
+
+**What's wrong:** it maps `ssl.record.version`/`tls.record.version` (the
+*outer TLS record-layer* version field) straight to a human string —
+`'0x0303': 'TLS 1.2'`, `'0x0304': 'TLS 1.3'`. That's correct for TLS
+1.0-1.2, but RFC 8446 §5.1 freezes the record-layer version at `0x0303`
+for TLS 1.3 specifically for backward-compatibility with middleboxes —
+the real negotiated version only appears in the ServerHello's
+`supported_versions` extension, which nothing here parses. The practical
+effect: every TLS 1.3 session in this codebase is currently reported and
+reasoned about as "TLS 1.2."
+
+**How this was found:** building the ML risk classifier
+(`feature/ml-risk-classifier`) and feeding it `secure_mail.pcap` (which
+negotiates cipher `0x1302` = `TLS_AES_256_GCM_SHA384`, a TLS-1.3-exclusive
+suite) — the session came back labeled `'TLS 1.2'` despite the cipher only
+existing in TLS 1.3.
+
+**Why it hasn't caused visible false positives (so far):** `cipher_suites.py`
+marks all five TLS 1.3 cipher suites `forward_secret: True`, and
+`check_forward_secrecy()`'s explicit `tls_version == 'TLS 1.3'` skip turns
+out to be a redundant safety net rather than the only thing preventing a
+false positive — the cipher lookup alone already produces the right
+answer regardless of the mislabeled version. It's been silently harmless
+by luck, not by design; anything added later that branches on TLS version
+more broadly (a report showing "TLS 1.2 sessions: N", a dashboard filter,
+a future check keyed more directly off version) would silently misclassify
+every TLS 1.3 session.
+
+**Fix status:** worked around defensively in
+`backend/app/ml/feature_extractor.py` (`effective_tls_version()` — trusts
+a TLS-1.3-exclusive cipher over the version string) since that's the code
+this was discovered in, but **not fixed at the source** in
+`tshark_helper.py`, which is shared code other features also depend on.
+
+**Recommended fix:** add `-e tls.handshake.extensions.supported_version`
+(or the ClientHello/ServerHello `supported_versions` extension field — the
+exact tshark field name should be checked with `tshark -G fields`, the
+same way the certificate field names were re-derived for bug #4) to the
+`extract_tls_handshakes()` command, and prefer that over the record-layer
+version when present.
+
 ---
 
 ## Net effect
@@ -126,4 +174,7 @@ capture went from 3 findings to 6 — the suite was passing throughout, but
 for most of this session it wasn't actually exercising a quarter of the
 documented security checks. All nine checks were confirmed live
 end-to-end. Bug #5 was independently fixed by a teammate and merged in
-afterward. All five bugs logged here are now resolved.
+afterward. Bug #6 was found while building the ML classifier and worked
+around locally there, but is still open at the source in
+`tshark_helper.py` -- worth a dedicated fix since other features read the
+same (currently wrong) version label.
