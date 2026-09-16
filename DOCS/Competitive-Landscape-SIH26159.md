@@ -210,3 +210,51 @@ build here).
   competitor repo surveyed (including the biggest ones) implements anything
   blockchain-related. Treat the theme tag as NTRO's category label, not a
   literal requirement.
+
+---
+
+## Appendix: every repo found, alphabetical
+
+Full `gh search repos "SecureMailScope"` result set as of 2026-09-16, for
+reference — cross-check this list before claiming "we checked everyone."
+Repos discussed above aren't re-annotated here; see the sections above for
+what's actually in them.
+
+- [Amin-Patel/SecureMailScope](https://github.com/Amin-Patel/SecureMailScope) — us
+- [Arulesh-08/securemailscope](https://github.com/Arulesh-08/securemailscope)
+- [Astra-Innovators/SecureMailScope-Prototype](https://github.com/Astra-Innovators/SecureMailScope-Prototype)
+- [Atharva006/securemailscope](https://github.com/Atharva006/securemailscope)
+- [BatthulaRajeswari/SecureMailScope](https://github.com/BatthulaRajeswari/SecureMailScope)
+- [CodeWithSantoshM07/SecureMailScope-AI](https://github.com/CodeWithSantoshM07/SecureMailScope-AI)
+- [Daddy-Dagger/SecureMailScope](https://github.com/Daddy-Dagger/SecureMailScope)
+- [Dikshant0Git/SecureMailScope](https://github.com/Dikshant0Git/SecureMailScope)
+- [Impana-Prakash/SecureMailScope](https://github.com/Impana-Prakash/SecureMailScope)
+- [Jxgxn-007/SecureMailScope](https://github.com/Jxgxn-007/SecureMailScope) — empty
+- [M-Tech-ops/SecureMailScope](https://github.com/M-Tech-ops/SecureMailScope)
+- [MalharBhoi/SecureMailScope](https://github.com/MalharBhoi/SecureMailScope)
+- [S-Vetrivel/SecureMailScope-SIH](https://github.com/S-Vetrivel/SecureMailScope-SIH)
+- [Shrihare7734/SecureMailScope](https://github.com/Shrihare7734/SecureMailScope)
+- [TeamPort587/SecureMailScope](https://github.com/TeamPort587/SecureMailScope)
+- [akshaymede/SecureMailScope](https://github.com/akshaymede/SecureMailScope)
+- [anushka2602/SecureMailScope](https://github.com/anushka2602/SecureMailScope)
+- [ashwini-1608/SecureMailScope](https://github.com/ashwini-1608/SecureMailScope)
+- [bikramjitsamanta10-creator/SecureMailScope](https://github.com/bikramjitsamanta10-creator/SecureMailScope)
+- [dhanush-girish/securemailscope](https://github.com/dhanush-girish/securemailscope)
+- [fredfe08/SecureMailScope](https://github.com/fredfe08/SecureMailScope)
+- [ganeshparmarit-lgtm/securemailscope](https://github.com/ganeshparmarit-lgtm/securemailscope)
+- [geetanshu17-tech/securemailscope](https://github.com/geetanshu17-tech/securemailscope)
+- [gouravsehlangia/SecureMailScope](https://github.com/gouravsehlangia/SecureMailScope)
+- [kris-5710/securemailscope](https://github.com/kris-5710/securemailscope)
+- [mulugujayavenkatadattasai-333/securemailscope](https://github.com/mulugujayavenkatadattasai-333/securemailscope)
+- [pitu2k/Securemailscope](https://github.com/pitu2k/Securemailscope)
+- [pm534485/SecureMailScope](https://github.com/pm534485/SecureMailScope)
+- [saravana-rr0411/SecureMailScope](https://github.com/saravana-rr0411/SecureMailScope)
+- [sharanaks/SecureMailScope](https://github.com/sharanaks/SecureMailScope)
+- [souravpal11/securemailscope](https://github.com/souravpal11/securemailscope)
+- [tatikondasai2006-debug/-SecureMailScope-](https://github.com/tatikondasai2006-debug/-SecureMailScope-)
+- [tatikondasai2006-debug/SecureEmailScope](https://github.com/tatikondasai2006-debug/SecureEmailScope)
+- [tejaswini7-bit/securemailscope-intelligence](https://github.com/tejaswini7-bit/securemailscope-intelligence)
+- [thanmaikrishnakelam-dot/SecureMailScope](https://github.com/thanmaikrishnakelam-dot/SecureMailScope)
+- [thanmaikrishnakelam-dot/SecureMailScope-V2](https://github.com/thanmaikrishnakelam-dot/SecureMailScope-V2)
+- [thanmaikrishnakelam-dot/SecureMailScope-_webDashboard](https://github.com/thanmaikrishnakelam-dot/SecureMailScope-_webDashboard)
+- [xarjunpatil/SIH26159-SecureMailScope-AI-Assisted-Cryptographic-Security-Posture-Assessment-for](https://github.com/xarjunpatil/SIH26159-SecureMailScope-AI-Assisted-Cryptographic-Security-Posture-Assessment-for) — carries the official problem statement JSON, used as this doc's spec source
