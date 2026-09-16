@@ -1,0 +1,45 @@
+SecureMailScope ML Training Report
+============================================================
+Total unique sessions: 506 (synthetic: 504, real: 3, duplicates removed: 1)
+Label distribution: {'CRITICAL': 296, 'LOW': 32, 'HIGH': 162, 'MEDIUM': 16}
+Train/test split: 379/127 (stratified, seed=42)
+
+Held-out test accuracy: 0.9764
+
+Note on accuracy: labels are a deterministic function of the
+features (rule-engine distillation, not noisy real-world
+ground truth), so near-1.0 held-out accuracy is expected and is
+not itself a leakage signal -- the leakage guard here is the
+duplicate-row removal above, which runs before the train/test
+split so no row appears in both.
+
+Classification report (held-out test set):
+              precision    recall  f1-score   support
+
+    CRITICAL       1.00      0.99      0.99        74
+        HIGH       1.00      0.95      0.97        41
+         LOW       0.80      1.00      0.89         8
+      MEDIUM       0.80      1.00      0.89         4
+
+    accuracy                           0.98       127
+   macro avg       0.90      0.98      0.94       127
+weighted avg       0.98      0.98      0.98       127
+
+Feature importances:
+  cert_self_signed: 0.2306
+  cipher_weak: 0.1280
+  tls_version_tls11: 0.0907
+  tls_version_tls10: 0.0770
+  tls_version_ssl3: 0.0726
+  cert_expired: 0.0654
+  cert_signature_weak: 0.0635
+  tls_version_tls13: 0.0620
+  has_certificate: 0.0542
+  cert_key_size_adequate: 0.0501
+  tls_version_tls12: 0.0446
+  cipher_forward_secret: 0.0185
+  cipher_unknown: 0.0156
+  cipher_aead: 0.0114
+  starttls_used: 0.0083
+  plaintext_session: 0.0039
+  tls_version_none: 0.0037
