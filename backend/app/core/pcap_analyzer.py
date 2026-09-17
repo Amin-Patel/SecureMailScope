@@ -16,6 +16,7 @@ from utils.tshark_helper import TSharkHelper
 from utils.cert_analyzer import CertificateAnalyzer
 from core.security_engine import SecurityEngine
 from services.gemini_service import GeminiSecurityAssistant
+from services import ml_risk_service
 
 
 class EmailPCAPAnalyzer:
@@ -93,6 +94,17 @@ class EmailPCAPAnalyzer:
             print(f"       Found {len(findings)} security issues")
             print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
 
+            # Step 5b: ML Risk Classification & Anomaly Detection (advisory,
+            # kept separate from the deterministic engine above -- can only
+            # raise the fused risk level, never suppress a rule-confirmed one)
+            ml_assessment = ml_risk_service.assess_sessions(self.tls_handshakes, self.certificates)
+            risk = ml_risk_service.fuse_risk_level(risk, ml_assessment)
+            if ml_assessment:
+                print(f"       ML assessment: {len(ml_assessment['sessions'])} session(s) scored"
+                      f"{' (risk level elevated by ML)' if risk['ml_elevated'] else ''}")
+            else:
+                print("       ML assessment unavailable (no trained model found)")
+
             # Step 6: AI-Powered Intelligence Enrichment
             print("[6/7] Generating AI Threat Intelligence & Contextual Guidance...")
             for finding in findings:
@@ -111,7 +123,10 @@ class EmailPCAPAnalyzer:
             print("[7/7] Compiling results payload...\n")
             summary = analysis_data['summary']
             summary['risk_score'] = risk['risk_score']
-            summary['risk_level'] = risk['risk_level']
+            # The headline level is the fused one (rules, raised-but-never-
+            # lowered by ML); risk['risk_level'] below stays the pure
+            # deterministic value for anyone who wants the rules-only view.
+            summary['risk_level'] = risk.get('fused_risk_level', risk['risk_level'])
 
             result = {
                 'success': True,
@@ -121,6 +136,7 @@ class EmailPCAPAnalyzer:
                 'ai_summary': ai_summary,
                 'findings': findings,
                 'risk': risk,
+                'ml_assessment': ml_assessment,
                 'sessions': self._clean_sessions(),
                 'certificates': self.certificates,
                 'certificate_chains': self.certificate_chains,
