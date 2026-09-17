@@ -22,27 +22,32 @@ from app.ml.anomaly_detector import AnomalyDetector
 REPORT_PATH = Path(__file__).parent.parent.parent / "models" / "training_report.txt"
 
 
-def _load_real_demo_sessions() -> Tuple[List[List[float]], List[str]]:
-    """Run our own demo PCAPs through the real extraction pipeline and
-    fold their sessions into the training set. Best-effort: if TShark
-    isn't available in this environment, skip real data rather than fail
-    the whole training run -- synthetic data alone is still a valid,
-    if less-grounded, dataset."""
-    try:
-        from utils.tshark_helper import TSharkHelper
-        from utils.cert_analyzer import CertificateAnalyzer
-    except Exception as e:
-        print(f"[!] Could not import extraction pipeline ({e}); skipping real demo sessions.")
-        return [], []
 
-    test_data_dir = Path(__file__).parent.parent.parent / "test-data"
-    demo_files = ["smtp.pcap", "rsasnakeoil2.cap", "secure_mail.pcap"]
+# Optional external corpus of real email-protocol captures. Not part of the
+# repo (too large, and not ours to redistribute) -- this only kicks in on a
+# machine where the dataset has actually been downloaded. See
+# DOCS/Competitive-Landscape-SIH26159.md's Tor.zip dead-end note: this is
+# the corrected `nonTor` counterpart of that same ISCXTor2016 dataset,
+# filtered here to just the mail-protocol captures.
+NONTOR_DATASET_DIR = Path(r"C:\Users\Yash\Documents\Datasets\NonTor")
+NONTOR_EMAIL_FILES = [
+    "Email_IMAP_filetransfer.pcap",
+    "POP_filetransfer.pcap",
+    "Workstation_Thunderbird_Imap.pcap",
+    "Workstation_Thunderbird_POP.pcap",
+]
 
+
+def _load_real_sessions_from(
+    pcap_dir: Path, filenames: List[str], TSharkHelper, CertificateAnalyzer
+) -> Tuple[List[List[float]], List[str]]:
+    """Shared extraction loop for any directory of real PCAPs -- our own
+    demo captures and the external NonTor corpus both go through this."""
     vectors: List[List[float]] = []
     labels: List[str] = []
 
-    for filename in demo_files:
-        pcap_path = test_data_dir / filename
+    for filename in filenames:
+        pcap_path = pcap_dir / filename
         if not pcap_path.exists():
             continue
         try:
@@ -55,6 +60,35 @@ def _load_real_demo_sessions() -> Tuple[List[List[float]], List[str]]:
         vectors.extend(v)
         labels.extend(l)
         print(f"    {filename}: {len(v)} real session(s) extracted")
+
+    return vectors, labels
+
+
+def _load_real_demo_sessions() -> Tuple[List[List[float]], List[str]]:
+    """Run our own demo PCAPs, plus the NonTor email corpus if present on
+    this machine, through the real extraction pipeline and fold their
+    sessions into the training set. Best-effort: if TShark isn't available
+    in this environment, skip real data rather than fail the whole
+    training run -- synthetic data alone is still a valid, if
+    less-grounded, dataset."""
+    try:
+        from utils.tshark_helper import TSharkHelper
+        from utils.cert_analyzer import CertificateAnalyzer
+    except Exception as e:
+        print(f"[!] Could not import extraction pipeline ({e}); skipping real demo sessions.")
+        return [], []
+
+    test_data_dir = Path(__file__).parent.parent.parent / "test-data"
+    demo_files = ["smtp.pcap", "rsasnakeoil2.cap", "secure_mail.pcap"]
+    vectors, labels = _load_real_sessions_from(test_data_dir, demo_files, TSharkHelper, CertificateAnalyzer)
+
+    if NONTOR_DATASET_DIR.exists():
+        print(f"    Found NonTor dataset at {NONTOR_DATASET_DIR}, extracting email captures...")
+        nv, nl = _load_real_sessions_from(NONTOR_DATASET_DIR, NONTOR_EMAIL_FILES, TSharkHelper, CertificateAnalyzer)
+        vectors.extend(nv)
+        labels.extend(nl)
+    else:
+        print(f"    NonTor dataset not found at {NONTOR_DATASET_DIR}, skipping.")
 
     return vectors, labels
 
