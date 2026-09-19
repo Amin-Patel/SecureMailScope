@@ -8,19 +8,36 @@ built, these four are the remaining gaps against the official spec and the
 competitive field. Independent features, each implementable and mergeable
 on its own — this doc records the scoping so anyone can pick one up.
 
+
+> **Status (2026-09-19): implemented.** All four features are built and in
+> [PR #3](https://github.com/Amin-Patel/SecureMailScope/pull/3)
+> (`feature/roadmap-pdf-grading-monitoring-emailauth`). Sections below keep
+> the original scoping; each has an **As built** note where the shipped
+> version differs. The threat-intel feed is separate, in
+> [PR #4](https://github.com/Amin-Patel/SecureMailScope/pull/4). The two PRs
+> conflict in `.gitignore`, `.env.example` and `security_engine.py` (adjacent
+> additions): merge #3 first, then resolve #4 keeping both sides.
+
 ---
 
 ## 1. Real server-side PDF export
 
 **Why:** the official spec requires "Exportable reports in JSON, PDF, and
-HTML." JSON already works (`GET /api/analysis/{capture_id}/report?format=json`
-in `backend/main.py:165`) and HTML has a real generator
+HTML." JSON already worked (`GET /api/analysis/{capture_id}/report?format=json`
+in `backend/main.py`) and HTML has a real generator
 (`ReportGenerator.generate_html_report()` in
-`backend/app/services/report_generator.py`, already print-ready with
-`@media print` CSS). But it's **not wired to the frontend at all** — the
-"Print / Save as PDF" button in `Dashboard.jsx` just calls `window.print()`
-on a hidden `PrintableReport.jsx` component. There is no real,
-server-generated PDF file anywhere in the app today.
+`backend/app/services/report_generator.py`, print-ready with `@media print`
+CSS) which the dashboard's report dropdown links to. But the only "PDF" was
+the browser print dialog (`window.print()` on a hidden `PrintableReport.jsx`);
+there was no real server-generated PDF file.
+
+**As built:** `xhtml2pdf` (pure Python via `reportlab`; `pyHanko` pulls in
+`cryptography>=48`, so that pin was raised to `>=48,<51`).
+`ReportGenerator.generate_pdf_report()` reuses the HTML, strips emoji (the
+built-in PDF fonts render them as boxes), and `format=pdf` was added to the
+existing endpoint, with download actions in the dashboard dropdown and export
+modal. xhtml2pdf ignores CSS grid, so the summary cards stack vertically in
+the PDF; page layout was not visually reviewed.
 
 **Plan:**
 - Add `xhtml2pdf` to `backend/requirements.txt` (pure-Python HTML→PDF via
@@ -36,6 +53,12 @@ server-generated PDF file anywhere in the app today.
   existing JSON button already uses).
 
 ## 2. A–F security grading
+
+**As built:** boundaries were aligned to the existing risk-level thresholds
+(20/40/70) so a grade can never contradict the level: **A 0-9, B 10-19,
+C 20-39, D 40-54, E 55-69, F 70+**. When ML fusion raises the level, the
+grade is floored to match (MEDIUM→C, HIGH→D, CRITICAL→F). The thresholds
+quoted in the plan below are superseded.
 
 **Why:** competitor MalharBhoi grades servers A–F instead of a bare 0-100
 score — more presentation-friendly, cheap to add alongside (not instead
@@ -59,6 +82,15 @@ host. Per-host grading is a bigger lift (would need tagging in
   gauge in `Dashboard.jsx` (~line 417-420, reading `backendRisk.risk_grade`).
 
 ## 3. Live/continuous monitoring
+
+**As built:** opt-in via `WATCH_DIR` (plus `WATCH_POLL_SECONDS`), a daemon
+thread rather than an asyncio task since analysis is blocking subprocess
+work. Files are analyzed once their size is stable across two polls;
+processed files are recorded in `WATCH_DIR/.processed.json` so restarts
+don't re-analyze them (failures are recorded too). The upload pipeline was
+refactored into a shared `analyze_and_store()`. Status at
+`GET /api/watch/status`; the History page shows an indicator and refreshes
+when a capture lands.
 
 **Why:** every team surveyed, us included, is "upload one PCAP, get one
 report." The official spec's language about assisting a SOC in real time
@@ -98,46 +130,43 @@ Same win, much lower risk — that's the right scope for us too.
   indicator, auto-refreshing when a new result lands — reuses the
   existing history UI rather than building a new view.
 
-## 4. SPF/DKIM/DMARC checks (explicitly labeled as supplementary/active)
+## 4. SPF/DKIM/DMARC — passive from the capture, plus an on-demand lookup
 
-**Why:** a real feature a couple competitors (fredfe08, Dikshant0Git)
-built, but **confirmed out of the official NTRO spec scope** — the
-`problem_statement.json` deliverables are entirely passive-PCAP/TLS/cert
-focused. SPF/DKIM/DMARC requires **active** DNS lookups, a fundamentally
-different trust model than the rest of this tool. Must be presented as a
-clearly separate, opt-in, active check — never silently mixed into the
-passive-PCAP findings list, so the tool never misrepresents what its core
-analysis actually does.
+**Direction changed during implementation.** The original plan made this an
+active-only DNS check because the project is a *passive* analyzer. The
+decision was to make it passive first: when a PCAP is uploaded, SPF/DKIM/DMARC
+evidence is read from the packets themselves. The active lookup was kept as
+a separate, user-initiated extra.
 
-**Current state:** no DNS lookup capability exists anywhere in the
-codebase today (`dnspython` not in `requirements.txt`, no `socket`/`dns`
-usage found).
+**Passive analysis** (`backend/app/services/email_auth_analyzer.py`, no DNS
+queries):
+- Message headers in *plaintext* SMTP/IMAP/POP3 streams:
+  `Authentication-Results`, `Received-SPF`, `DKIM-Signature`.
+- SPF/DMARC/DKIM TXT records in plaintext DNS responses in the capture
+  (`TSharkHelper.extract_dns_txt_records`).
+- Findings of type `email_authentication`, one per rule listing every
+  affected message/record: recorded SPF/DKIM/DMARC failures, `rsa-sha1`
+  signatures, signatures not covering `From`, `l=` body-length limits,
+  signing domain not aligned with From, unsigned mail (LOW), permissive SPF
+  (`+all`/`?all`), non-enforcing DMARC, DKIM keys under 1024/2048 bits.
+- Included in the risk score, AI explanations (RAG doc
+  `email_authentication.md`), dashboard card and the HTML/PDF report.
 
-**Plan:**
-- Add `dnspython` to `backend/requirements.txt`.
-- `backend/app/services/email_auth_checker.py`:
-  - `check_spf(domain)`: TXT lookup, find `v=spf1`, check for terminal
-    `-all` (hard fail, good) vs `~all` (soft) vs `+all`/missing (bad).
-  - `check_dkim(domain, selector="default")`: TXT lookup at
-    `{selector}._domainkey.{domain}` — note DKIM selectors aren't
-    DNS-discoverable, so this needs a user-supplied/best-guess selector;
-    document the limitation directly in the docstring and UI.
-  - `check_dmarc(domain)`: TXT lookup at `_dmarc.{domain}`, parse `p=`
-    policy (`reject`/`quarantine` good, `none` weak, missing bad).
-  - `run_email_auth_checks(domain, dkim_selector=None)`: runs all three,
-    returns a result with an explicit `"check_type": "active_dns_lookup"`
-    marker so downstream consumers can visually separate it.
-- `POST /api/email-auth-check` in `main.py`, body
-  `{domain, dkim_selector?}` — **not** auto-triggered by PCAP upload, a
-  separate user-initiated action. Can pre-fill `domain` from a
-  certificate's CN/SAN already extracted from the capture as a
-  convenience default, never executed automatically.
-- Frontend: a separate "Email Authentication (Active Check)" panel, not
-  mixed into the main findings list — visually distinguished (different
-  accent color, an "Active DNS lookup — not part of passive PCAP analysis"
-  caption).
+**Limits, stated in the output:** verdicts are what servers wrote into the
+headers, not independently verified (verifying a signature needs the public
+key from live DNS); TLS-encrypted streams hide headers and are only counted;
+a message with no `Authentication-Results` is "not asserted", not a failure.
+Like `missing_starttls`, these are capture-level findings the per-session ML
+classifier does not model.
 
----
+**On-demand lookup** (`email_auth_checker.py`, `POST /api/email-auth-check`):
+active DNS TXT lookups, run only when the user clicks Check, tagged
+`check_type=active_dns_lookup`, and kept out of the capture's findings and
+risk score. Raises alerts for dangerous published records: missing or
+permissive SPF, more than 10 SPF lookups, deprecated `ptr`, missing or
+`p=none` DMARC, and weak DKIM keys. DKIM selectors cannot be discovered from
+DNS, so with no selector common ones are probed and "not found" means only
+that. The panel suggests domains seen in the capture.
 
 ## Suggested sequencing
 
@@ -148,7 +177,10 @@ usage found).
 4. **SPF/DKIM/DMARC** — independent of the other three, can be done in
    parallel; the labeling risk is already resolved above.
 
-## Verification (per feature, once implemented)
+## Verification (per feature)
+
+Run on 2026-09-19 unless noted; the dashboard UI itself was not viewed in a
+browser (it sits behind a Supabase login), only built and API-tested.
 
 - **PDF**: `POST /api/demo/load/vulnerable_smtp` → `GET
   /api/analysis/{capture_id}/report?format=pdf` → confirm a valid,
