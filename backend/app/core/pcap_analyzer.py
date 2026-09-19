@@ -97,7 +97,9 @@ class EmailPCAPAnalyzer:
             # Step 5b: ML Risk Classification & Anomaly Detection (advisory,
             # kept separate from the deterministic engine above -- can only
             # raise the fused risk level, never suppress a rule-confirmed one)
-            ml_assessment = ml_risk_service.assess_sessions(self.tls_handshakes, self.certificates)
+            ml_assessment = ml_risk_service.assess_sessions(
+                self.tls_handshakes, self.certificates, self.certificate_chains
+            )
             risk = ml_risk_service.fuse_risk_level(risk, ml_assessment)
             if ml_assessment:
                 print(f"       ML assessment: {len(ml_assessment['sessions'])} session(s) scored"

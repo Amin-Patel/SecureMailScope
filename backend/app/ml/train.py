@@ -53,10 +53,11 @@ def _load_real_sessions_from(
         try:
             handshakes = TSharkHelper.extract_tls_handshakes(str(pcap_path))
             certificates = CertificateAnalyzer.extract_certificates(str(pcap_path))
+            certificate_chains = CertificateAnalyzer.extract_and_analyze_chains(str(pcap_path))
         except Exception as e:
             print(f"[!] Skipping {filename}: {e}")
             continue
-        v, l = extract_real_sessions(handshakes, certificates)
+        v, l = extract_real_sessions(handshakes, certificates, certificate_chains)
         vectors.extend(v)
         labels.extend(l)
         print(f"    {filename}: {len(v)} real session(s) extracted")

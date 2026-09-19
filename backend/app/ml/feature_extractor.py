@@ -31,11 +31,32 @@ FEATURE_NAMES: List[str] = [
     "cert_self_signed",
     "cert_key_size_adequate",
     "cert_signature_weak",
+    "cert_not_yet_valid",
+    "cert_hostname_mismatch",
+    "cert_signature_invalid",
+    "cert_chain_order_invalid",
+    "cert_untrusted_ca",
+    "cert_invalid_eku",
+    "cert_invalid_basic_constraints",
     "starttls_used",
     "plaintext_session",
 ]
 
 _AEAD_MARKERS = ("GCM", "CHACHA20", "CCM")
+
+# Maps cert_analyzer.py's _evaluate_pki_rules() rule_ids to the feature they
+# set. CERT_EXPIRED and CERT_SELF_SIGNED are deliberately excluded -- those
+# are already covered by cert_expired/cert_self_signed above, sourced
+# directly from the certificate dict rather than from a chain-level finding.
+_PKI_RULE_TO_FEATURE = {
+    "CERT_NOT_YET_VALID": "cert_not_yet_valid",
+    "CERT_HOSTNAME_MISMATCH": "cert_hostname_mismatch",
+    "CERT_SIGNATURE_INVALID": "cert_signature_invalid",
+    "CERT_INVALID_CHAIN_ORDER": "cert_chain_order_invalid",
+    "CERT_UNTRUSTED_CA": "cert_untrusted_ca",
+    "CERT_INVALID_EKU": "cert_invalid_eku",
+    "CERT_INVALID_BASIC_CONSTRAINTS": "cert_invalid_basic_constraints",
+}
 
 _TLS_VERSION_FEATURE = {
     "SSL 3.0": "tls_version_ssl3",
@@ -84,6 +105,7 @@ def extract_session_features(
     cipher_code: Optional[str],
     certificate: Optional[Dict] = None,
     starttls_used: bool = False,
+    pki_findings: Optional[List[Dict]] = None,
 ) -> Dict[str, float]:
     """
     Build one session's feature vector.
@@ -96,6 +118,10 @@ def extract_session_features(
         cert_analyzer.py produces), or None if no certificate was observed.
     starttls_used: whether an explicit STARTTLS upgrade was observed for
         this session (as opposed to implicit TLS or no encryption at all).
+    pki_findings: the matched certificate chain's 'pki_findings' list (same
+        shape CertificateAnalyzer._evaluate_pki_rules() produces), or None
+        if no chain was analyzed. Only meaningful alongside a certificate --
+        a chain-level finding can't exist without a presented chain.
     """
     features = {name: 0.0 for name in FEATURE_NAMES}
 
@@ -123,6 +149,11 @@ def extract_session_features(
         features["cert_self_signed"] = 1.0 if certificate.get("is_self_signed") else 0.0
         features["cert_key_size_adequate"] = _cert_key_size_adequate(certificate)
         features["cert_signature_weak"] = _cert_signature_weak(certificate)
+
+        for finding in (pki_findings or []):
+            feature_name = _PKI_RULE_TO_FEATURE.get(finding.get("rule_id"))
+            if feature_name:
+                features[feature_name] = 1.0
 
     features["starttls_used"] = 1.0 if starttls_used else 0.0
 
