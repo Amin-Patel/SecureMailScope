@@ -6,6 +6,8 @@ Serves the PCAP analysis pipeline, AI enrichment, demo presets, and forensic rep
 import os
 import json
 import uuid
+import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 
@@ -20,9 +22,31 @@ from app.core.pcap_analyzer import EmailPCAPAnalyzer
 from app.services.report_generator import ReportGenerator
 from app.services.knowledge_base import get_knowledge_base
 from app.services import knowledge_ingestion
+from app.services.pcap_watcher import PcapWatcher
 
 # ΓöÇΓöÇΓöÇ APP SETUP ΓöÇΓöÇΓöÇ
+watcher: "PcapWatcher | None" = None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start the folder watcher only when WATCH_DIR is set (opt-in)."""
+    global watcher
+    watch_dir = os.getenv("WATCH_DIR", "").strip()
+    if watch_dir:
+        watcher = PcapWatcher(
+            Path(watch_dir),
+            analyze_watched_file,
+            poll_seconds=float(os.getenv("WATCH_POLL_SECONDS", "5")),
+        )
+        watcher.start()
+    yield
+    if watcher:
+        watcher.stop()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="SecureMailScope API",
     description="AI-Driven Email Security Assessment & Forensics",
     version="1.0.0"
@@ -332,32 +356,59 @@ async def get_stream_details(capture_id: str, stream_id: str):
 
 
 # ─── HELPER PIPELINE FUNCTION ───
+def analyze_and_store(file_path: Path, original_filename: str, capture_id: str, file_size: int) -> dict:
+    """Run the analyzer, persist the result to the results store, and return it.
+    Raises RuntimeError if the analyzer reports failure."""
+    analyzer = EmailPCAPAnalyzer(str(file_path))
+    result = analyzer.analyze()
+
+    if not result.get("success"):
+        raise RuntimeError(f"Analysis failed: {result.get('error')}")
+
+    result["capture_id"] = capture_id
+    result["upload_timestamp"] = datetime.now().isoformat()
+    result["original_filename"] = original_filename
+    result["file_size"] = file_size
+    result["status"] = "completed"
+
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    with open(results_file, "w") as f:
+        json.dump(result, f, indent=2, default=str)
+    return result
+
+
 def run_analysis_pipeline(file_path: Path, original_filename: str, capture_id: str, file_size: int):
     """Executes the PCAP analyzer, saves the payload, and returns JSON."""
     try:
-        analyzer = EmailPCAPAnalyzer(str(file_path))
-        result = analyzer.analyze()
-
-        if not result.get("success"):
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {result.get('error')}")
-
-        result["capture_id"] = capture_id
-        result["upload_timestamp"] = datetime.now().isoformat()
-        result["original_filename"] = original_filename
-        result["file_size"] = file_size
-        result["status"] = "completed"
-
-        # Save to cache
-        results_file = RESULTS_DIR / f"{capture_id}.json"
-        with open(results_file, "w") as f:
-            json.dump(result, f, indent=2, default=str)
-
-        return JSONResponse(content=result)
-
-    except HTTPException:
-        raise
+        return JSONResponse(content=analyze_and_store(file_path, original_filename, capture_id, file_size))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {str(e)}")
+
+
+def analyze_watched_file(path: Path):
+    """Watcher callback: analyze one dropped-in capture into the normal results store.
+    Returns the capture_id, or None if analysis failed."""
+    capture_id = f"watch_{path.stem}_{uuid.uuid4().hex[:6]}"
+    # Copy first so the analyzer reads a stable file even if the source is rotated/removed.
+    staged = UPLOAD_DIR / f"{capture_id}{path.suffix.lower()}"
+    try:
+        shutil.copyfile(path, staged)
+        analyze_and_store(staged, path.name, capture_id, staged.stat().st_size)
+        return capture_id
+    except Exception as e:
+        print(f"[!] Watched file analysis failed for {path.name}: {e}")
+        return None
+
+
+# ─── 8. LIVE MONITORING STATUS ───
+@app.get("/api/watch/status")
+async def watch_status():
+    """Whether folder monitoring is active, and what it has processed recently."""
+    if watcher is None:
+        return {"enabled": False, "running": False, "recent": []}
+    return {"enabled": True, **watcher.status()}
 
 
 if __name__ == "__main__":

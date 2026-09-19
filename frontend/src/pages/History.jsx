@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getAnalyses, deleteAnalysis, deleteAnalysesBatch } from '../utils/api';
+import { getAnalyses, deleteAnalysis, deleteAnalysesBatch, getWatchStatus } from '../utils/api';
 
 /** Normalise backend analysis item into the shape HistoryCard expects */
 function normaliseAnalysis(item) {
@@ -217,8 +217,10 @@ export function History() {
   const [deleting, setDeleting] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const [watch, setWatch] = useState({ enabled: false, running: false, recent: [] });
+
+  const loadData = (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     getAnalyses()
       .then(res => {
@@ -236,6 +238,23 @@ export function History() {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Poll folder-monitoring status; silently refresh the list when a new capture lands.
+  useEffect(() => {
+    let active = true;
+    let lastSeen = null;
+    const poll = async () => {
+      const status = await getWatchStatus();
+      if (!active) return;
+      setWatch(status);
+      const top = status.recent?.[0]?.capture_id || null;
+      if (lastSeen !== null && top && top !== lastSeen) loadData(true);
+      lastSeen = top || '';
+    };
+    poll();
+    const timer = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(timer); };
   }, []);
 
   const filtered = analyses.filter(e =>
@@ -338,6 +357,22 @@ export function History() {
         }}>
           <i className="fa-solid fa-circle-check"></i>
           <span>{notification}</span>
+        </div>
+      )}
+
+      {watch.enabled && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
+          padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+          background: watch.running ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+          border: `1px solid ${watch.running ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
+          color: watch.running ? '#34d399' : '#f87171',
+        }}>
+          <i className="fa-solid fa-satellite-dish"></i>
+          <span>
+            {watch.running ? 'Live monitoring ON' : 'Live monitoring stopped'}
+            {watch.current_file ? ` — analyzing ${watch.current_file}` : ` — watching ${watch.watch_dir}`}
+          </span>
         </div>
       )}
 

@@ -102,6 +102,19 @@ export async function getAnalyses() {
 }
 
 /**
+ * Folder-monitoring status (enabled flag, current file, recently processed captures).
+ * Never throws: a failed poll just reports monitoring as unavailable.
+ */
+export async function getWatchStatus() {
+  try {
+    const response = await apiClient.get('/watch/status');
+    return response.data;
+  } catch {
+    return { enabled: false, running: false, recent: [] };
+  }
+}
+
+/**
  * Trigger the analysis of a demo/sample PCAP file on the server.
  * @param {string} demoName The filename of the demo PCAP (e.g. smtp.pcap or rsasnakeoil2.cap).
  * @returns {Promise<Object>} The complete analysis payload.
