@@ -7,6 +7,7 @@ Preserves forensic evidence references (frame, stream, SNI, endpoints).
 from typing import List, Dict, Optional, Any
 
 from core.cipher_suites import lookup as lookup_cipher_suite
+from services.threat_intel_feed import get_threat_intel_feed
 
 # Known weak signature algorithms
 WEAK_SIG_ALGOS = ['md5', 'sha1', 'md2']
@@ -64,6 +65,7 @@ class SecurityEngine:
         self.check_missing_starttls()
         self.check_forward_secrecy()
         self.check_certificate_chains()
+        self.check_known_malicious_certificates()
         self.check_email_authentication()
 
         return self.findings
@@ -455,6 +457,49 @@ class SecurityEngine:
                     structured_evidence=ev,
                     remediation=pki_f.get('remediation', 'Renew or reconfigure certificate.')
                 )
+
+    # ─── CHECK 9: THREAT INTEL (SSLBL) ───
+    def check_known_malicious_certificates(self):
+        """Flags certificates matching abuse.ch's SSLBL blacklist of SHA1
+        fingerprints seen on botnet C2 infrastructure. Unlike every other
+        check here, this is not a property of the certificate itself --
+        it's external threat intelligence, so a well-formed, validly-signed
+        certificate can still trigger it."""
+        certificates = self.data.get('certificates', [])
+        feed = get_threat_intel_feed()
+        matches = []
+
+        for cert in certificates:
+            listing = feed.lookup(cert.get('fingerprint_sha1'))
+            if listing:
+                matches.append({
+                    'subject': cert.get('subject', 'Unknown'),
+                    'fingerprint_sha1': cert.get('fingerprint_sha1', ''),
+                    'listed_since': listing.get('listed_since', ''),
+                    'reason': listing.get('reason', ''),
+                })
+
+        if matches:
+            subjects = [m['subject'] for m in matches[:3]]
+            self._add_finding(
+                severity='CRITICAL',
+                finding_type='known_malicious_certificate',
+                rule_id='CERT_THREAT_INTEL_MATCH',
+                title='Certificate Matches Known-Malicious Threat Intel',
+                description=(
+                    f"{len(matches)} certificate(s) match entries in the abuse.ch SSLBL "
+                    f"blacklist of certificates observed on botnet command-and-control "
+                    f"infrastructure. This connection is cryptographically valid but "
+                    f"terminates at a host known to be malicious."
+                ),
+                evidence=f"Affected: {', '.join(subjects)}",
+                structured_evidence={'affected_certificates': matches, 'source': 'abuse.ch SSLBL'},
+                remediation=(
+                    "1. Treat this host as compromised and terminate the connection\n"
+                    "2. Isolate the endpoint and investigate for related C2 traffic\n"
+                    "3. Block the certificate's SHA1 fingerprint and associated IP(s) at the network perimeter"
+                )
+            )
 
     # ─── CHECK 10: EMAIL AUTHENTICATION (PASSIVE SPF/DKIM/DMARC) ───
     def check_email_authentication(self):
