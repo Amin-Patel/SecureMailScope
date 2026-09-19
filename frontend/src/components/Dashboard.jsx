@@ -6,7 +6,6 @@ import { DashboardCharts } from './DashboardCharts';
 import { AIExplanation } from './AIExplanation';
 import { RemediationCard } from './RemediationCard';
 import { CertificateViewer } from './CertificateViewer';
-import { EmailAuthPanel } from './EmailAuthPanel';
 import { FindingModal } from './FindingModal';
 import { SessionTimeline } from './SessionTimeline';
 import { ReportExportModal } from './ReportExportModal';
@@ -609,8 +608,6 @@ export function Dashboard() {
               </div>
             )}
           </div>
-
-          <EmailAuthPanel key={activeJobId} certificates={certificates} />
 
           {/* Recent Analyses */}
           <div className="glass-card">

@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +23,6 @@ from app.services.report_generator import ReportGenerator
 from app.services.knowledge_base import get_knowledge_base
 from app.services import knowledge_ingestion
 from app.services.pcap_watcher import PcapWatcher
-from app.services import email_auth_checker
 
 # ΓöÇΓöÇΓöÇ APP SETUP ΓöÇΓöÇΓöÇ
 watcher: "PcapWatcher | None" = None
@@ -401,23 +400,6 @@ def analyze_watched_file(path: Path):
     except Exception as e:
         print(f"[!] Watched file analysis failed for {path.name}: {e}")
         return None
-
-
-# ─── 9. EMAIL AUTHENTICATION (ACTIVE DNS CHECK) ───
-class EmailAuthRequest(BaseModel):
-    domain: str
-    dkim_selector: Optional[str] = None
-
-
-@app.post("/api/email-auth-check")
-def email_auth_check(req: EmailAuthRequest):
-    """SPF/DKIM/DMARC lookup for a domain. Active DNS queries, user-initiated,
-    and intentionally separate from the passive PCAP analysis and its risk score.
-    (Sync route so the blocking DNS calls run in FastAPI's threadpool.)"""
-    try:
-        return email_auth_checker.run_email_auth_checks(req.domain, req.dkim_selector)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 # ─── 8. LIVE MONITORING STATUS ───
