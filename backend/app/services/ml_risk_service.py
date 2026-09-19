@@ -18,13 +18,16 @@ might have missed, not to second-guess what they found.
 from typing import Dict, List, Optional
 
 from ml.feature_extractor import extract_session_features, effective_tls_version
+from core.security_engine import LEVEL_MIN_GRADE
 from ml.risk_classifier import get_risk_classifier
 from ml.anomaly_detector import get_anomaly_detector
 
 _SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
 
 
-def assess_sessions(tls_handshakes: List[Dict], certificates: List[Dict]) -> Optional[Dict]:
+def assess_sessions(
+    tls_handshakes: List[Dict], certificates: List[Dict], certificate_chains: Optional[List[Dict]] = None
+) -> Optional[Dict]:
     """
     Run the ML risk classifier and anomaly detector over every negotiated
     TLS session in this capture. Returns None (not an empty result) if no
@@ -38,6 +41,7 @@ def assess_sessions(tls_handshakes: List[Dict], certificates: List[Dict]) -> Opt
         return None
 
     certificate = certificates[0] if certificates else None
+    pki_findings = (certificate_chains or [{}])[0].get("pki_findings") if certificate_chains else None
     session_assessments = []
 
     for hs in tls_handshakes:
@@ -45,7 +49,9 @@ def assess_sessions(tls_handshakes: List[Dict], certificates: List[Dict]) -> Opt
             continue
         ciphers = hs.get("cipher_suites") or []
         cipher_code = ciphers[0] if ciphers else None
-        features = extract_session_features(hs.get("tls_version"), cipher_code, certificate, starttls_used=False)
+        features = extract_session_features(
+            hs.get("tls_version"), cipher_code, certificate, starttls_used=False, pki_findings=pki_findings
+        )
 
         assessment = {
             "src": hs.get("src"),
@@ -97,6 +103,9 @@ def fuse_risk_level(deterministic_risk: Dict, ml_assessment: Optional[Dict]) -> 
     if ml_rank > deterministic_rank:
         result["fused_risk_level"] = highest_ml_label
         result["ml_elevated"] = True
+        floor = LEVEL_MIN_GRADE.get(highest_ml_label)
+        if floor and floor > result.get("risk_grade", "A"):  # letters sort A<F; worse grade wins
+            result["risk_grade"] = floor
     else:
         result["fused_risk_level"] = deterministic_level
         result["ml_elevated"] = False

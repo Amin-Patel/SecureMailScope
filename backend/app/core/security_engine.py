@@ -23,6 +23,20 @@ MIN_KEY_SIZES = {
 }
 
 
+# Grade boundaries align with calculate_risk_score()'s level thresholds
+# (20/40/70) so a letter grade can never contradict the risk level.
+GRADE_THRESHOLDS = [(70, 'F'), (55, 'E'), (40, 'D'), (20, 'C'), (10, 'B')]
+# Minimum grade implied by a risk level, used when ML fusion raises the level.
+LEVEL_MIN_GRADE = {'MEDIUM': 'C', 'HIGH': 'D', 'CRITICAL': 'F'}
+
+
+def risk_score_to_grade(score: int) -> str:
+    for threshold, grade in GRADE_THRESHOLDS:
+        if score >= threshold:
+            return grade
+    return 'A'
+
+
 class SecurityEngine:
     """Run deterministic security checks on PCAP analysis data and PKI chains"""
 
@@ -52,6 +66,7 @@ class SecurityEngine:
         self.check_forward_secrecy()
         self.check_certificate_chains()
         self.check_known_malicious_certificates()
+        self.check_email_authentication()
 
         return self.findings
 
@@ -486,6 +501,24 @@ class SecurityEngine:
                 )
             )
 
+    # ─── CHECK 10: EMAIL AUTHENTICATION (PASSIVE SPF/DKIM/DMARC) ───
+    def check_email_authentication(self):
+        """Findings from SPF/DKIM/DMARC evidence found in the capture itself
+        (message headers, plaintext DNS). One finding per rule, listing every
+        affected message/record, so a busy capture doesn't inflate the score."""
+        for issue in self.data.get('email_auth', {}).get('issues', []):
+            affected = issue['affected']
+            self._add_finding(
+                severity=issue['severity'],
+                finding_type='email_authentication',
+                rule_id=issue['rule_id'],
+                title=issue['title'],
+                description=f"{issue['description']} ({len(affected)} occurrence(s) in this capture.)",
+                evidence="; ".join(affected[:3]) + (f" (+{len(affected) - 3} more)" if len(affected) > 3 else ""),
+                structured_evidence={'affected': affected, 'source': 'passive capture analysis'},
+                remediation=issue['remediation'],
+            )
+
     # ─── RISK SCORING ───
     def calculate_risk_score(self) -> Dict:
         """Calculate overall risk score (0-100)"""
@@ -524,6 +557,7 @@ class SecurityEngine:
         return {
             'risk_score': risk_score,
             'risk_level': level,
+            'risk_grade': risk_score_to_grade(risk_score),
             'finding_score': finding_score,
             'encryption_penalty': round(encryption_penalty, 1),
             'critical_count': sum(1 for f in self.findings if f['severity'] == 'CRITICAL'),

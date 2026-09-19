@@ -16,6 +16,7 @@ from utils.tshark_helper import TSharkHelper
 from utils.cert_analyzer import CertificateAnalyzer
 from core.security_engine import SecurityEngine
 from services.gemini_service import GeminiSecurityAssistant
+from services import email_auth_analyzer
 from services import ml_risk_service
 
 
@@ -41,6 +42,7 @@ class EmailPCAPAnalyzer:
         self.tls_handshakes = []
         self.certificates = []
         self.certificate_chains = []
+        self.email_auth = {}
         self.tshark = TSharkHelper()
         self.ai_assistant = GeminiSecurityAssistant()
 
@@ -78,6 +80,14 @@ class EmailPCAPAnalyzer:
             self.certificates = CertificateAnalyzer.extract_certificates(str(self.pcap_path))
             print(f"       Extracted {len(self.certificates)} unique certificates ({len(self.certificate_chains)} handshake chains)")
 
+            # Step 4b: Passive SPF/DKIM/DMARC evidence (message headers + plaintext DNS)
+            self.email_auth = email_auth_analyzer.analyze(
+                self.tcp_streams, self.tshark.extract_dns_txt_records(str(self.pcap_path))
+            )
+            ea = self.email_auth['summary']
+            print(f"       Email auth: {ea['messages_analyzed']} plaintext message(s), "
+                  f"{ea['dns_records_found']} DNS auth record(s), {ea['encrypted_mail_streams']} encrypted stream(s) not inspectable")
+
             # Step 5: Deterministic Security Engine
             print("[5/7] Running deterministic security & PKI compliance checks...")
             analysis_data = {
@@ -86,7 +96,8 @@ class EmailPCAPAnalyzer:
                 'tls_handshakes': self.tls_handshakes,
                 'certificates': self.certificates,
                 'certificate_chains': self.certificate_chains,
-                'tcp_streams': self.tcp_streams
+                'tcp_streams': self.tcp_streams,
+                'email_auth': self.email_auth
             }
             engine = SecurityEngine(analysis_data)
             findings = engine.run_all_checks()
@@ -97,7 +108,9 @@ class EmailPCAPAnalyzer:
             # Step 5b: ML Risk Classification & Anomaly Detection (advisory,
             # kept separate from the deterministic engine above -- can only
             # raise the fused risk level, never suppress a rule-confirmed one)
-            ml_assessment = ml_risk_service.assess_sessions(self.tls_handshakes, self.certificates)
+            ml_assessment = ml_risk_service.assess_sessions(
+                self.tls_handshakes, self.certificates, self.certificate_chains
+            )
             risk = ml_risk_service.fuse_risk_level(risk, ml_assessment)
             if ml_assessment:
                 print(f"       ML assessment: {len(ml_assessment['sessions'])} session(s) scored"
@@ -141,7 +154,8 @@ class EmailPCAPAnalyzer:
                 'certificates': self.certificates,
                 'certificate_chains': self.certificate_chains,
                 'tcp_streams': self.tcp_streams,
-                'tls_handshakes': self.tls_handshakes
+                'tls_handshakes': self.tls_handshakes,
+                'email_auth': self.email_auth
             }
 
             self._print_report(result)
