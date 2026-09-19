@@ -2,9 +2,13 @@
 SPF / DKIM / DMARC checks for a domain.
 
 IMPORTANT: this is an ACTIVE check. It issues live DNS TXT lookups and is
-not derived from the captured traffic. It is a supplementary, user-
-initiated feature and is deliberately kept out of the passive PCAP
-findings/risk score (results carry check_type="active_dns_lookup").
+not derived from the captured traffic. It is a user-initiated feature and
+is deliberately kept out of the passive PCAP findings/risk score (results
+carry check_type="active_dns_lookup"). The passive counterpart, which reads
+the same kinds of evidence out of a capture, is email_auth_analyzer.py.
+
+Each result also carries `alerts`: dangerous-looking published records
+(permissive SPF, non-enforcing DMARC, weak DKIM keys, ...).
 """
 
 import re
@@ -12,6 +16,8 @@ from typing import Callable, Dict, List, Optional
 
 import dns.exception
 import dns.resolver
+
+from services.email_auth_analyzer import _rsa_bits_from_dkim
 
 CHECK_TYPE = "active_dns_lookup"
 DNS_TIMEOUT_SECONDS = 5.0
@@ -139,7 +145,8 @@ def check_dkim(domain: str, selector: Optional[str] = None, resolve: TxtResolver
             revoked = re.search(r"\bp=\s*(;|$)", record.replace(" ", "")) is not None
             if revoked:
                 return _result("fail", f"DKIM key for selector '{sel}' is published with an empty p= (revoked).", record, selector=sel)
-            return _result("pass", f"DKIM public key found for selector '{sel}'.", record, selector=sel)
+            return _result("pass", f"DKIM public key found for selector '{sel}'.", record, selector=sel,
+                           rsa_bits=_rsa_bits_from_dkim(record))
 
     if errors == len(candidates):
         return _result("error", "DNS lookups failed for every DKIM selector tried.")
@@ -154,16 +161,81 @@ def check_dkim(domain: str, selector: Optional[str] = None, resolve: TxtResolver
     )
 
 
+# ─── ALERTS ───
+
+_SEVERITY_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+_SPF_LOOKUP_MECHANISMS = ("include:", "a", "mx", "ptr", "exists:", "redirect=")
+
+
+def _alert(severity: str, title: str, detail: str, remediation: str) -> Dict:
+    return {"severity": severity, "title": title, "detail": detail, "remediation": remediation}
+
+
+def derive_alerts(spf: Dict, dkim: Dict, dmarc: Dict) -> List[Dict]:
+    """Raise an alert for each dangerous-looking published record."""
+    alerts: List[Dict] = []
+
+    if spf["status"] == "missing":
+        alerts.append(_alert("MEDIUM", "No SPF record",
+                             "Anyone can send mail claiming this domain without failing SPF.",
+                             "Publish an SPF record ending in -all."))
+    elif spf["status"] == "fail":
+        detail = spf["summary"]
+        alerts.append(_alert("HIGH", "Dangerous SPF record", detail,
+                             "Fix the record: publish exactly one v=spf1 record ending in -all (or ~all while rolling out)."))
+    elif spf["status"] == "warn":
+        alerts.append(_alert("LOW", "SPF is not strict", spf["summary"], "Move to -all once all senders are listed."))
+    if spf.get("record"):
+        terms = spf["record"].lower().split()
+        lookups = sum(1 for t in terms[1:] if t.lstrip("+-~?").startswith(_SPF_LOOKUP_MECHANISMS))
+        if lookups > 10:
+            alerts.append(_alert("MEDIUM", "SPF exceeds the 10-DNS-lookup limit",
+                                 f"At least {lookups} lookup mechanisms in the top-level record; receivers return permerror above 10, so SPF stops protecting the domain.",
+                                 "Flatten includes or remove unused mechanisms."))
+        if any(t.lstrip("+-~?") == "ptr" or t.lstrip("+-~?").startswith("ptr:") for t in terms):
+            alerts.append(_alert("LOW", "SPF uses the deprecated ptr mechanism",
+                                 "ptr is slow, unreliable and discouraged by RFC 7208.", "Replace ptr with ip4/ip6/include."))
+
+    if dmarc["status"] == "missing":
+        alerts.append(_alert("MEDIUM", "No DMARC record",
+                             "Receivers have no policy for spoofed mail from this domain.", "Publish a DMARC record, starting with p=none plus rua reporting."))
+    elif dmarc["status"] == "warn":
+        alerts.append(_alert("MEDIUM", "DMARC is monitoring-only (p=none)", dmarc["summary"],
+                             "Move to p=quarantine, then p=reject, after reviewing reports."))
+    elif dmarc["status"] == "fail":
+        alerts.append(_alert("MEDIUM", "DMARC record has no valid policy", dmarc["summary"], "Add a valid p= tag."))
+
+    bits = dkim.get("rsa_bits")
+    if dkim["status"] == "fail":
+        alerts.append(_alert("MEDIUM", "DKIM key revoked", dkim["summary"], "Publish a new key if signing is still intended."))
+    if bits:
+        if bits < 1024:
+            alerts.append(_alert("HIGH", "Dangerously weak DKIM key",
+                                 f"Selector '{dkim.get('selector')}' publishes a {bits}-bit RSA key, which can be factored.", "Rotate to a 2048-bit key."))
+        elif bits < 2048:
+            alerts.append(_alert("MEDIUM", "Weak DKIM key",
+                                 f"Selector '{dkim.get('selector')}' publishes a {bits}-bit RSA key.", "Rotate to a 2048-bit key."))
+
+    alerts.sort(key=lambda a: -_SEVERITY_ORDER[a["severity"]])
+    return alerts
+
+
 # ─── COMBINED ───
 
 def run_email_auth_checks(domain: str, dkim_selector: Optional[str] = None,
                           resolve: TxtResolver = default_txt_resolver) -> Dict:
     domain = normalize_domain(domain)
+    spf = check_spf(domain, resolve)
+    dkim = check_dkim(domain, dkim_selector, resolve)
+    dmarc = check_dmarc(domain, resolve)
+    alerts = derive_alerts(spf, dkim, dmarc)
     return {
         "check_type": CHECK_TYPE,
         "domain": domain,
         "note": "Active DNS lookup: reflects the domain's current public DNS, not the captured traffic.",
-        "spf": check_spf(domain, resolve),
-        "dkim": check_dkim(domain, dkim_selector, resolve),
-        "dmarc": check_dmarc(domain, resolve),
+        "spf": spf,
+        "dkim": dkim,
+        "dmarc": dmarc,
+        "alerts": alerts,
+        "alert_level": alerts[0]["severity"] if alerts else "NONE",
     }

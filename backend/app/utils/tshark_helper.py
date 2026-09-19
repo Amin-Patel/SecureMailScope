@@ -464,6 +464,47 @@ class TSharkHelper:
             return {}
 
     @staticmethod
+    def extract_dns_txt_records(pcap_path: str) -> List[Dict]:
+        """
+        Passively extract TXT records from plaintext DNS responses in the capture
+        (SPF/DMARC/DKIM policy shows up here when a resolver lookup was recorded).
+        Returns [{'frame': int, 'name': str, 'txt': [str, ...]}]; [] on any failure,
+        since DNS evidence is optional.
+        """
+        pcap_file = Path(pcap_path)
+        if not pcap_file.exists():
+            return []
+        cmd = [
+            TSharkHelper.get_tshark_path(),
+            '-r', str(pcap_file),
+            '-Y', 'dns.flags.response == 1 && dns.txt',
+            '-T', 'json',
+            '-e', 'frame.number',
+            '-e', 'dns.qry.name',
+            '-e', 'dns.txt',
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if not result.stdout.strip():
+                return []
+            records = []
+            for packet in json.loads(result.stdout):
+                layers = packet.get('_source', {}).get('layers', {})
+                names = layers.get('dns.qry.name', [])
+                txts = layers.get('dns.txt', [])
+                if not names or not txts:
+                    continue
+                records.append({
+                    'frame': int(layers.get('frame.number', ['0'])[0] or 0),
+                    'name': names[0],
+                    'txt': txts,
+                })
+            return records
+        except Exception as e:
+            print(f"[!] Error extracting DNS TXT records: {e}")
+            return []
+
+    @staticmethod
     def _redact_protocol_credentials(text: str, direction: str, protocol: str, state: Optional[str]) -> Tuple[str, int, Optional[str]]:
         """
         Protocol-aware credential redaction for SMTP, POP3, and IMAP.

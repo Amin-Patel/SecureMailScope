@@ -64,6 +64,7 @@ class SecurityEngine:
         self.check_missing_starttls()
         self.check_forward_secrecy()
         self.check_certificate_chains()
+        self.check_email_authentication()
 
         return self.findings
 
@@ -454,6 +455,24 @@ class SecurityEngine:
                     structured_evidence=ev,
                     remediation=pki_f.get('remediation', 'Renew or reconfigure certificate.')
                 )
+
+    # ─── CHECK 10: EMAIL AUTHENTICATION (PASSIVE SPF/DKIM/DMARC) ───
+    def check_email_authentication(self):
+        """Findings from SPF/DKIM/DMARC evidence found in the capture itself
+        (message headers, plaintext DNS). One finding per rule, listing every
+        affected message/record, so a busy capture doesn't inflate the score."""
+        for issue in self.data.get('email_auth', {}).get('issues', []):
+            affected = issue['affected']
+            self._add_finding(
+                severity=issue['severity'],
+                finding_type='email_authentication',
+                rule_id=issue['rule_id'],
+                title=issue['title'],
+                description=f"{issue['description']} ({len(affected)} occurrence(s) in this capture.)",
+                evidence="; ".join(affected[:3]) + (f" (+{len(affected) - 3} more)" if len(affected) > 3 else ""),
+                structured_evidence={'affected': affected, 'source': 'passive capture analysis'},
+                remediation=issue['remediation'],
+            )
 
     # ─── RISK SCORING ───
     def calculate_risk_score(self) -> Dict:

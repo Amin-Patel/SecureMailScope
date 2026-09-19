@@ -6,7 +6,7 @@ import { DashboardCharts } from './DashboardCharts';
 import { AIExplanation } from './AIExplanation';
 import { RemediationCard } from './RemediationCard';
 import { CertificateViewer } from './CertificateViewer';
-import { EmailAuthPanel } from './EmailAuthPanel';
+import { EmailAuthPanel, EmailAuthEvidence } from './EmailAuthPanel';
 import { FindingModal } from './FindingModal';
 import { SessionTimeline } from './SessionTimeline';
 import { ReportExportModal } from './ReportExportModal';
@@ -610,7 +610,8 @@ export function Dashboard() {
             )}
           </div>
 
-          <EmailAuthPanel key={activeJobId} certificates={certificates} />
+          <EmailAuthEvidence emailAuth={rawResults?.email_auth} />
+          <EmailAuthPanel key={activeJobId} certificates={certificates} emailAuth={rawResults?.email_auth} />
 
           {/* Recent Analyses */}
           <div className="glass-card">
