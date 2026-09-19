@@ -18,6 +18,7 @@ might have missed, not to second-guess what they found.
 from typing import Dict, List, Optional
 
 from ml.feature_extractor import extract_session_features, effective_tls_version
+from core.security_engine import LEVEL_MIN_GRADE
 from ml.risk_classifier import get_risk_classifier
 from ml.anomaly_detector import get_anomaly_detector
 
@@ -102,6 +103,9 @@ def fuse_risk_level(deterministic_risk: Dict, ml_assessment: Optional[Dict]) -> 
     if ml_rank > deterministic_rank:
         result["fused_risk_level"] = highest_ml_label
         result["ml_elevated"] = True
+        floor = LEVEL_MIN_GRADE.get(highest_ml_label)
+        if floor and floor > result.get("risk_grade", "A"):  # letters sort A<F; worse grade wins
+            result["risk_grade"] = floor
     else:
         result["fused_risk_level"] = deterministic_level
         result["ml_elevated"] = False

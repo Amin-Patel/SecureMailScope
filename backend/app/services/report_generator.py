@@ -12,6 +12,22 @@ class ReportGenerator:
     """Renders comprehensive cybersecurity forensic reports."""
 
     @staticmethod
+    def generate_pdf_report(data: Dict) -> bytes:
+        """Render the HTML report to PDF bytes (pure-Python xhtml2pdf, no system libs)."""
+        from io import BytesIO
+        from xhtml2pdf import pisa
+
+        import re
+        html = ReportGenerator.generate_html_report(data)
+        # The built-in PDF fonts have no emoji glyphs; they render as boxes.
+        html = re.sub(r"[☀-➿🀀-🫿️]", "", html)
+        buffer = BytesIO()
+        result = pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        if result.err:
+            raise RuntimeError("PDF rendering failed")
+        return buffer.getvalue()
+
+    @staticmethod
     def generate_html_report(data: Dict) -> str:
         """Generate a self-contained, print-ready HTML forensic report."""
         summary = data.get("summary", {})
@@ -109,6 +125,7 @@ class ReportGenerator:
         risk_score = risk.get("risk_score", 0)
         risk_level = risk.get("risk_level", "LOW")
         risk_color = severity_colors.get(risk_level, "#16a34a")
+        risk_grade = risk.get("risk_grade", "")
 
         # Full HTML Document
         html_doc = f"""<!DOCTYPE html>
@@ -186,6 +203,7 @@ class ReportGenerator:
                 <h4>Security Posture</h4>
                 <div class="val" style="color: {risk_color};">{risk_score}/100</div>
                 <span class="badge" style="background-color: {risk_color}; color: white;">{risk_level}</span>
+                {f'<div class="val" style="color: {risk_color};">Grade {risk_grade}</div>' if risk_grade else ''}
             </div>
             <div class="card">
                 <h4>Email Packets</h4>

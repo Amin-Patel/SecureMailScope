@@ -163,8 +163,8 @@ async def get_results(capture_id: str):
 
 # ΓöÇΓöÇΓöÇ 5. FORENSIC REPORT GENERATION ΓöÇΓöÇΓöÇ
 @app.get("/api/analysis/{capture_id}/report")
-async def get_report(capture_id: str, format: str = Query("html", pattern="^(html|json)$")):
-    """Generate and return an official Forensic Assessment Report in HTML or JSON format."""
+async def get_report(capture_id: str, format: str = Query("html", pattern="^(html|json|pdf)$")):
+    """Generate and return an official Forensic Assessment Report in HTML, JSON, or PDF format."""
     results_file = RESULTS_DIR / f"{capture_id}.json"
     if not results_file.exists():
         raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
@@ -176,6 +176,16 @@ async def get_report(capture_id: str, format: str = Query("html", pattern="^(htm
         return JSONResponse(
             content=data,
             headers={"Content-Disposition": f"attachment; filename=SecureMailScope_Report_{capture_id}.json"}
+        )
+    elif format == "pdf":
+        try:
+            pdf_bytes = ReportGenerator.generate_pdf_report(data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=SecureMailScope_Report_{capture_id}.pdf"}
         )
     else:
         html_content = ReportGenerator.generate_html_report(data)

@@ -45,6 +45,7 @@ export function Dashboard() {
   const [riskInfo, setRiskInfo] = useState({
     risk_score: 0,
     risk_level: 'UNKNOWN',
+    risk_grade: '',
     critical_count: 0,
     high_count: 0,
     medium_count: 0,
@@ -107,6 +108,7 @@ export function Dashboard() {
           setRiskInfo({
             risk_score: backendRisk.risk_score ?? summary.risk_score ?? 0,
             risk_level: backendRisk.risk_level || summary.risk_level || 'UNKNOWN',
+            risk_grade: backendRisk.risk_grade || '',
             critical_count: backendRisk.critical_count ?? critical,
             high_count: backendRisk.high_count ?? high,
             medium_count: backendRisk.medium_count ?? med,
@@ -300,6 +302,27 @@ export function Dashboard() {
                       <span>View / Print Executive Report</span>
                     </a>
                     <a
+                      href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=pdf`}
+                      download
+                      onClick={() => setReportDropdownOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        color: 'rgba(255, 255, 255, 0.9)',
+                        fontSize: '12px',
+                        textDecoration: 'none',
+                        transition: 'background 0.2s',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <i className="fa-solid fa-file-pdf" style={{ color: '#f87171', width: '14px' }}></i>
+                      <span>Download PDF Report</span>
+                    </a>
+                    <a
                       href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=json`}
                       download
                       onClick={() => setReportDropdownOpen(false)}
@@ -417,6 +440,11 @@ export function Dashboard() {
                 <div style={{ marginTop: '-8px', textAlign: 'center' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 800, color: riskColor, margin: 0, textShadow: `0 0 16px ${riskColor}88`, letterSpacing: '0.04em' }}>
                     {riskLabel} RISK
+                    {riskInfo.risk_grade && (
+                      <span style={{ marginLeft: 10, padding: '2px 10px', borderRadius: 6, border: `1px solid ${riskColor}`, fontSize: 16 }}>
+                        Grade {riskInfo.risk_grade}
+                      </span>
+                    )}
                   </h3>
                 </div>
               </div>

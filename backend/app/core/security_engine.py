@@ -22,6 +22,20 @@ MIN_KEY_SIZES = {
 }
 
 
+# Grade boundaries align with calculate_risk_score()'s level thresholds
+# (20/40/70) so a letter grade can never contradict the risk level.
+GRADE_THRESHOLDS = [(70, 'F'), (55, 'E'), (40, 'D'), (20, 'C'), (10, 'B')]
+# Minimum grade implied by a risk level, used when ML fusion raises the level.
+LEVEL_MIN_GRADE = {'MEDIUM': 'C', 'HIGH': 'D', 'CRITICAL': 'F'}
+
+
+def risk_score_to_grade(score: int) -> str:
+    for threshold, grade in GRADE_THRESHOLDS:
+        if score >= threshold:
+            return grade
+    return 'A'
+
+
 class SecurityEngine:
     """Run deterministic security checks on PCAP analysis data and PKI chains"""
 
@@ -479,6 +493,7 @@ class SecurityEngine:
         return {
             'risk_score': risk_score,
             'risk_level': level,
+            'risk_grade': risk_score_to_grade(risk_score),
             'finding_score': finding_score,
             'encryption_penalty': round(encryption_penalty, 1),
             'critical_count': sum(1 for f in self.findings if f['severity'] == 'CRITICAL'),
