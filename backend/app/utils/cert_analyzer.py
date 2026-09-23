@@ -1,6 +1,7 @@
 """
 Certificate Extraction, Chain Construction, and CA Trust Hierarchy Validation
 Adheres strictly to deterministic X.509 cryptography and RFC 5280 PKI path validation.
+Includes RSASSA-PSS and PKCS#1 v1.5 verification, multi-tier chain building, and trust status auditing.
 """
 
 import binascii
@@ -41,7 +42,7 @@ class CertificateAnalyzer:
     def verify_certificate_signature(child_cert: x509.Certificate, parent_cert: x509.Certificate) -> bool:
         """
         Verifies that child_cert was digitally signed by parent_cert.
-        Supports RSA (PKCS#1 v1.5 and PSS), ECDSA, Ed25519, and Ed448.
+        Supports RSA (PKCS#1 v1.5 and RSASSA-PSS), ECDSA, Ed25519, Ed448, and DSA.
         """
         try:
             public_key = parent_cert.public_key()
@@ -51,10 +52,27 @@ class CertificateAnalyzer:
 
             if isinstance(public_key, rsa.RSAPublicKey):
                 if sig_hash is None:
-                    # Might be legacy or custom
                     return False
-                public_key.verify(sig_bytes, tbs_bytes, padding.PKCS1v15(), sig_hash)
-                return True
+                # Try PKCS#1 v1.5 first
+                try:
+                    public_key.verify(sig_bytes, tbs_bytes, padding.PKCS1v15(), sig_hash)
+                    return True
+                except Exception:
+                    # Fallback to RSASSA-PSS
+                    try:
+                        public_key.verify(
+                            sig_bytes,
+                            tbs_bytes,
+                            padding.PSS(
+                                mgf=padding.MGF1(sig_hash),
+                                salt_length=padding.PSS.AUTO
+                            ),
+                            sig_hash
+                        )
+                        return True
+                    except Exception:
+                        return False
+
             elif isinstance(public_key, ec.EllipticCurvePublicKey):
                 if sig_hash is None:
                     return False
@@ -93,7 +111,6 @@ class CertificateAnalyzer:
         analyzed_results = []
 
         for group_key, items in streams_map.items():
-            # Sort items by chain position
             items.sort(key=lambda x: x['chain_position'])
             presented_certs_parsed: List[Tuple[x509.Certificate, Dict]] = []
 
@@ -107,7 +124,6 @@ class CertificateAnalyzer:
             if not presented_certs_parsed:
                 continue
 
-            # Analyze the presented chain for this handshake
             chain_analysis = cls._analyze_single_handshake_chain(presented_certs_parsed)
             analyzed_results.append(chain_analysis)
 
@@ -115,12 +131,6 @@ class CertificateAnalyzer:
 
     @classmethod
     def _analyze_single_handshake_chain(cls, presented: List[Tuple[x509.Certificate, Dict]]) -> Dict:
-        """
-        Analyzes a single TLS handshake's certificate chain:
-        1. Formats each presented certificate into a structured dictionary.
-        2. Reconstructs the presented chain and builds the trust path to a trusted root CA.
-        3. Executes deterministic PKI validation checks.
-        """
         now = datetime.now(timezone.utc)
         trust_store = cls.get_trust_store()
 
@@ -136,7 +146,6 @@ class CertificateAnalyzer:
             structured_presented.append((cert, struct_cert))
 
         # 2. Build Trust Path:
-        # Start with leaf certificate (first certificate presented in standard TLS)
         leaf_cert, leaf_struct = structured_presented[0]
         
         # Check Hostname / SAN match
@@ -161,7 +170,6 @@ class CertificateAnalyzer:
             if current_cert.issuer == current_cert.subject:
                 if cls.verify_certificate_signature(current_cert, current_cert):
                     current_struct['is_self_signed'] = True
-                    # Check if present in trust store
                     if cls._is_in_trust_store(current_cert, trust_store):
                         current_struct['trust_status'] = 'TRUSTED_ROOT'
                     else:
@@ -175,17 +183,14 @@ class CertificateAnalyzer:
             parent_struct = None
             for idx, (p_cert, p_struct) in enumerate(presented_pool):
                 if p_cert.serial_number not in visited and p_cert.subject == current_cert.issuer:
-                    # Additional check: SKI / AKI if available
                     aki = current_struct.get('authority_key_identifier')
                     ski = p_struct.get('subject_key_identifier')
                     if aki and ski and aki != ski:
-                        continue # Key identifier mismatch
+                        continue
 
-                    # Verify signature
                     if cls.verify_certificate_signature(current_cert, p_cert):
                         parent_found = p_cert
                         parent_struct = p_struct
-                        # Check chain ordering
                         if presented_pool.index((p_cert, p_struct)) != 0:
                             chain_order_valid = False
                         presented_pool.pop(idx)
@@ -198,7 +203,7 @@ class CertificateAnalyzer:
                 current_struct = parent_struct
                 continue
 
-            # If not in presented pool, check local Trust Store (standard TLS behavior)
+            # If not in presented pool, check local Trust Store
             trust_anchor = cls._find_in_trust_store(current_cert.issuer, current_struct.get('authority_key_identifier'), trust_store)
             if trust_anchor:
                 if cls.verify_certificate_signature(current_cert, trust_anchor):
@@ -210,7 +215,6 @@ class CertificateAnalyzer:
                 else:
                     signature_valid_throughout = False
 
-            # If neither found, path cannot be completed
             is_unbuildable_chain = True
             is_untrusted_ca = True
             break
@@ -244,30 +248,30 @@ class CertificateAnalyzer:
 
     @staticmethod
     def _serialize_certificate(cert: x509.Certificate, is_presented: bool, meta: Optional[Dict], chain_pos: int) -> Dict[str, Any]:
-        """Converts an x509.Certificate object into a rich, structured dictionary."""
         now = datetime.now(timezone.utc)
         
-        # Subject & Issuer formatting
         subject_str = cert.subject.rfc4514_string()
         issuer_str = cert.issuer.rfc4514_string()
         
-        # Extract Common Name
         cn_attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
         common_name = cn_attrs[0].value if cn_attrs else subject_str
 
         issuer_cn_attrs = cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
         issuer_common_name = issuer_cn_attrs[0].value if issuer_cn_attrs else issuer_str
 
-        # Serial Number formatted in hex
         serial_hex = f"{cert.serial_number:032X}"
 
         # Validity
-        not_before = cert.not_valid_before_utc
-        not_after = cert.not_valid_after_utc
+        try:
+            not_before = cert.not_valid_before_utc
+            not_after = cert.not_valid_after_utc
+        except AttributeError:
+            not_before = cert.not_valid_before.replace(tzinfo=timezone.utc)
+            not_after = cert.not_valid_after.replace(tzinfo=timezone.utc)
+
         is_expired = now > not_after
         not_yet_valid = now < not_before
 
-        # Public Key Info
         pub_key = cert.public_key()
         pub_algo = "UNKNOWN"
         key_size = 0
@@ -287,11 +291,9 @@ class CertificateAnalyzer:
             pub_algo = "DSA"
             key_size = pub_key.key_size
 
-        # Signature Algorithm
         sig_algo = cert.signature_algorithm_oid._name if hasattr(cert.signature_algorithm_oid, '_name') else str(cert.signature_algorithm_oid.dotted_string)
         sig_hash_algo = cert.signature_hash_algorithm.name if cert.signature_hash_algorithm else "None"
 
-        # Extensions: SKI / AKI
         ski = None
         try:
             ski_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
@@ -307,7 +309,6 @@ class CertificateAnalyzer:
         except Exception:
             pass
 
-        # Basic Constraints
         is_ca = False
         path_len = None
         try:
@@ -317,7 +318,6 @@ class CertificateAnalyzer:
         except Exception:
             pass
 
-        # Key Usage
         key_usages = []
         try:
             ku_ext = cert.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE)
@@ -332,7 +332,6 @@ class CertificateAnalyzer:
         except Exception:
             pass
 
-        # Extended Key Usage
         ekus = []
         try:
             eku_ext = cert.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
@@ -345,7 +344,6 @@ class CertificateAnalyzer:
         except Exception:
             pass
 
-        # Subject Alternative Names (SAN)
         sans = []
         try:
             san_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
@@ -390,7 +388,6 @@ class CertificateAnalyzer:
 
     @staticmethod
     def _validate_hostname(sans: List[str], common_name: str, sni: str) -> str:
-        """Validates SNI hostname against certificate SANs and CN."""
         if not sni:
             return "NOT_DETERMINABLE_FROM_CAPTURE"
         
@@ -402,7 +399,6 @@ class CertificateAnalyzer:
         for cand in candidates:
             if cand == sni_clean:
                 return "MATCH"
-            # Wildcard matching *.example.com
             if cand.startswith("*.") and fnmatch.fnmatch(sni_clean, cand):
                 return "MATCH"
 
@@ -410,7 +406,6 @@ class CertificateAnalyzer:
 
     @classmethod
     def _is_in_trust_store(cls, cert: x509.Certificate, trust_store: List[x509.Certificate]) -> bool:
-        """Checks if a certificate is present in the trusted root CA store."""
         for root in trust_store:
             if root.subject == cert.subject and root.public_key() == cert.public_key():
                 return True
@@ -418,10 +413,8 @@ class CertificateAnalyzer:
 
     @classmethod
     def _find_in_trust_store(cls, issuer: x509.Name, aki: Optional[str], trust_store: List[x509.Certificate]) -> Optional[x509.Certificate]:
-        """Finds a matching root anchor in the trust store by issuer Name and optional AKI."""
         for root in trust_store:
             if root.subject == issuer:
-                # If SKI on root exists, match with AKI
                 if aki:
                     try:
                         ski_ext = root.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
@@ -445,9 +438,6 @@ class CertificateAnalyzer:
         tcp_stream: str,
         sni: str
     ) -> List[Dict]:
-        """
-        Runs granular, deterministic PKI validation rules returning machine-readable findings.
-        """
         findings = []
 
         # 1. CERT_EXPIRED
@@ -604,16 +594,3 @@ class CertificateAnalyzer:
                     seen.add(c['serial_number'])
                     flat_certs.append(c)
         return flat_certs
-
-
-if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1:
-        pcap = sys.argv[1]
-        chains = CertificateAnalyzer.extract_and_analyze_chains(pcap)
-        print(f"Extracted {len(chains)} certificate chains from {pcap}")
-        for ch in chains:
-            print(f"Stream {ch['tcp_stream']} Frame {ch['frame_number']} SNI='{ch['sni']}':")
-            print(f"  Presented: {len(ch['presented_chain'])}, Built Path: {len(ch['built_trust_path'])}, Trusted: {ch['is_trusted']}")
-            for f in ch['pki_findings']:
-                print(f"    - [{f['rule_id']}] {f['title']}")

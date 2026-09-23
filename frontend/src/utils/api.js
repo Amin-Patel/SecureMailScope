@@ -1,13 +1,30 @@
 // src/utils/api.js
 // Real API service layer for SecureMailScope frontend.
 // Uses Axios to communicate with the FastAPI backend at http://localhost:8001/api
+// Automatically attaches Supabase Auth JWT Bearer token to all outgoing requests.
 
 import axios from 'axios';
+import { supabase } from '../lib/supabase';
 
 // Create a reusable Axios instance with the required base URL.
 const apiClient = axios.create({
   baseURL: 'http://localhost:8001/api',
-  timeout: 15000, // 15 seconds timeout for all requests
+  timeout: 30000, // 30 seconds timeout
+});
+
+// Request Interceptor: Attach Supabase JWT Token
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (err) {
+    console.warn('[API Client] Could not attach Supabase session token:', err);
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 /**
@@ -43,7 +60,6 @@ export async function uploadPCAP(file) {
     });
     return response.data;
   } catch (err) {
-    // Throw a clean error that callers can catch and display.
     const msg = parseError(err);
     const error = new Error(msg);
     error.original = err;
@@ -58,7 +74,7 @@ export async function uploadPCAP(file) {
  */
 export async function getAnalysisResults(captureId) {
   try {
-    const response = await apiClient.get(`/analysis/${captureId}/results`);
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/results`);
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -75,7 +91,7 @@ export async function getAnalysisResults(captureId) {
  */
 export async function getAnalysisStatus(captureId) {
   try {
-    const response = await apiClient.get(`/analysis/${captureId}/status`);
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/status`);
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -86,7 +102,7 @@ export async function getAnalysisStatus(captureId) {
 }
 
 /**
- * Retrieve all completed analyses from the backend.
+ * Retrieve all completed analyses for current authenticated user.
  * @returns {Promise<Object>} Object containing analyses list and total count.
  */
 export async function getAnalyses() {

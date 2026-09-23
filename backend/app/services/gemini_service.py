@@ -2,13 +2,16 @@
 Gemini AI Service for SecureMailScope
 Uses the modern `google-genai` SDK with `gemini-3.6-flash`.
 Enriches deterministic security findings with contextual explanations and remediation.
-Includes an intelligent offline fallback engine.
+Strictly bounded: Cannot mutate deterministic risk scores, alter severities, or invent non-existent findings.
+Passes only sanitized metadata without raw payloads or secrets.
 """
 
 import os
 import json
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+
+from app.utils.sanitizer import DataSanitizer
 
 # Load environment variables
 load_dotenv()
@@ -67,16 +70,25 @@ class GeminiSecurityAssistant:
 
     def explain_finding(self, finding: Dict) -> Dict:
         """Generate contextual threat explanation and risk impact."""
+        # Sanitize finding attributes before prompt interpolation
+        sanitized_finding = DataSanitizer.sanitize_for_gemini(finding)
+        
         if self.is_online and self.client:
             try:
+                title = sanitized_finding.get('title', '')
+                severity = sanitized_finding.get('severity', '')
+                ftype = sanitized_finding.get('type', '')
+                desc = sanitized_finding.get('description', '')
+                ev = sanitized_finding.get('evidence', '')
+
                 prompt = (
                     "You are a Principal Cybersecurity Analyst specialized in email infrastructure, PKI, and transport cryptography. "
                     "Analyze this security finding extracted from network packet forensics:\n\n"
-                    f"Title: {finding.get('title')}\n"
-                    f"Severity: {finding.get('severity')}\n"
-                    f"Type: {finding.get('type')}\n"
-                    f"Description: {finding.get('description')}\n"
-                    f"Forensic Evidence: {finding.get('evidence')}\n\n"
+                    f"Title: {title}\n"
+                    f"Severity: {severity}\n"
+                    f"Type: {ftype}\n"
+                    f"Description: {desc}\n"
+                    f"Forensic Evidence: {ev}\n\n"
                     "Respond with a JSON object containing exactly two fields:\n"
                     "1. 'ai_explanation': A high-impact 2-sentence explanation covering technical attack vectors (e.g. MITM, credential harvesting, protocol downgrade) and organizational compliance impact.\n"
                     "2. 'ai_confidence': 'HIGH'\n"
@@ -98,27 +110,32 @@ class GeminiSecurityAssistant:
                     raw_text = raw_text[:-3]
 
                 parsed = json.loads(raw_text.strip())
+                explanation = parsed.get("ai_explanation", self._fallback_explanation(sanitized_finding))
                 return {
-                    "ai_explanation": parsed.get("ai_explanation", self._fallback_explanation(finding)),
+                    "ai_explanation": DataSanitizer.sanitize_text(explanation),
                     "ai_confidence": "HIGH",
                     "ai_source": f"Google Gemini ({self.model_name})"
                 }
             except Exception as e:
                 print(f"[!] AI generation fallback for {finding.get('id')}: {e}")
-                return self._offline_enrich_finding(finding)
+                return self._offline_enrich_finding(sanitized_finding)
         else:
-            return self._offline_enrich_finding(finding)
+            return self._offline_enrich_finding(sanitized_finding)
 
     def generate_executive_summary(self, summary: Dict, findings: List[Dict], risk: Dict) -> str:
         """Generate a CISO-level executive summary."""
+        sanitized_summary = DataSanitizer.sanitize_for_gemini(summary)
+        sanitized_findings = DataSanitizer.sanitize_for_gemini(findings)
+        sanitized_risk = DataSanitizer.sanitize_for_gemini(risk)
+
         if self.is_online and self.client:
             try:
                 prompt = (
                     "You are a CISO delivering an executive summary for an email security posture assessment report.\n"
-                    f"Total Monitored Email Packets: {summary.get('total_packets')}\n"
-                    f"Unencrypted Packet Ratio: {100 - int(summary.get('encryption_ratio', 0) * 100)}%\n"
-                    f"Evaluated Risk Score: {risk.get('risk_score')}/100 ({risk.get('risk_level')})\n"
-                    f"Critical/High Vulnerabilities: {[f.get('title') for f in findings]}\n\n"
+                    f"Total Monitored Email Packets: {sanitized_summary.get('total_packets')}\n"
+                    f"Unencrypted Packet Ratio: {100 - int(sanitized_summary.get('encryption_ratio', 0) * 100)}%\n"
+                    f"Evaluated Risk Score: {sanitized_risk.get('risk_score')}/100 ({sanitized_risk.get('risk_level')})\n"
+                    f"Critical/High Vulnerabilities: {[f.get('title') for f in sanitized_findings]}\n\n"
                     "Provide a concise 2-3 sentence executive briefing assessing organizational risk posture and mandatory remediation priority."
                 )
 
@@ -126,12 +143,12 @@ class GeminiSecurityAssistant:
                     model=self.model_name,
                     contents=prompt
                 )
-                return response.text.strip()
+                return DataSanitizer.sanitize_text(response.text.strip())
             except Exception as e:
                 print(f"[!] Executive summary fallback: {e}")
-                return self._fallback_executive_summary(summary, risk, findings)
+                return self._fallback_executive_summary(sanitized_summary, sanitized_risk, sanitized_findings)
         else:
-            return self._fallback_executive_summary(summary, risk, findings)
+            return self._fallback_executive_summary(sanitized_summary, sanitized_risk, sanitized_findings)
 
     # ─── OFFLINE DETERMINISTIC INTELLIGENCE ENGINE ───
 

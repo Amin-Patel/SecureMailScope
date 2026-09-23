@@ -1,0 +1,318 @@
+{
+  "success": true,
+  "capture_id": "demo_secure_enterprise_d5baa8",
+  "filename": "secure_mail.pcap",
+  "summary": {
+    "total_packets": 33,
+    "encrypted_packets": 33,
+    "plaintext_packets": 0,
+    "encryption_ratio": 1.0,
+    "protocols_detected": [
+      "IMAPS",
+      "SMTPS"
+    ],
+    "tls_versions": {
+      "TLS 1.2": 1
+    },
+    "session_count": 2,
+    "stream_count": 2,
+    "handshake_count": 1,
+    "certificate_count": 0,
+    "certificate_chains_count": 0,
+    "risk_score": 0,
+    "risk_level": "LOW"
+  },
+  "ai_summary": "STRONG SECURITY POSTURE: The inspected mail traffic demonstrates robust cryptographic controls with a low Risk Score of 0/100. Encryption standards and handshake parameters comply with modern secure transport recommendations.",
+  "findings": [],
+  "risk": {
+    "risk_score": 0,
+    "risk_level": "LOW",
+    "finding_score": 0,
+    "encryption_penalty": 0.0,
+    "critical_count": 0,
+    "high_count": 0,
+    "medium_count": 0,
+    "low_count": 0
+  },
+  "sessions": [
+    {
+      "id": "session_1",
+      "stream_id": 0,
+      "protocol": "SMTPS",
+      "src": "192.168.1.50:49152",
+      "dst": "198.51.100.25:465",
+      "packet_count": 20,
+      "encrypted": true,
+      "tls_versions": [
+        "TLS 1.2"
+      ]
+    },
+    {
+      "id": "session_2",
+      "stream_id": 1,
+      "protocol": "IMAPS",
+      "src": "192.168.1.50:49153",
+      "dst": "198.51.100.25:993",
+      "packet_count": 13,
+      "encrypted": true,
+      "tls_versions": [
+        "TLS 1.2"
+      ]
+    }
+  ],
+  "certificates": [],
+  "certificate_chains": [],
+  "tcp_streams": {
+    "0": {
+      "stream_id": 0,
+      "protocol": "SMTPS",
+      "client": {
+        "ip": "192.168.1.50",
+        "port": 49152
+      },
+      "server": {
+        "ip": "198.51.100.25",
+        "port": 465
+      },
+      "packet_count": 20,
+      "payload_bytes": 1674,
+      "duration": 0.24,
+      "encrypted": true,
+      "redacted": false,
+      "redaction_count": 0,
+      "chunks": [
+        {
+          "frame_number": 4,
+          "direction": "client_to_server",
+          "timestamp": 0.03,
+          "payload": "....5...1...........................................",
+          "hex_payload": "16030300350100003103030000000000000000000000000000000000000000000000000000000000000000000004130113020100"
+        },
+        {
+          "frame_number": 5,
+          "direction": "server_to_client",
+          "timestamp": 0.05,
+          "payload": "....*...&......................................",
+          "hex_payload": "160303002a020000260303000000000000000000000000000000000000000000000000000000000000000000130200"
+        },
+        {
+          "frame_number": 6,
+          "direction": "client_to_server",
+          "timestamp": 0.1,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 7,
+          "direction": "client_to_server",
+          "timestamp": 0.11,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 8,
+          "direction": "client_to_server",
+          "timestamp": 0.12,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 9,
+          "direction": "client_to_server",
+          "timestamp": 0.13,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 10,
+          "direction": "client_to_server",
+          "timestamp": 0.14,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 11,
+          "direction": "client_to_server",
+          "timestamp": 0.15,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 12,
+          "direction": "client_to_server",
+          "timestamp": 0.16,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 13,
+          "direction": "client_to_server",
+          "timestamp": 0.17,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 14,
+          "direction": "client_to_server",
+          "timestamp": 0.18,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 15,
+          "direction": "client_to_server",
+          "timestamp": 0.19,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 16,
+          "direction": "client_to_server",
+          "timestamp": 0.2,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 17,
+          "direction": "client_to_server",
+          "timestamp": 0.21,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 18,
+          "direction": "client_to_server",
+          "timestamp": 0.22,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 19,
+          "direction": "client_to_server",
+          "timestamp": 0.23,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "frame_number": 20,
+          "direction": "client_to_server",
+          "timestamp": 0.24,
+          "payload": "....d....................................................................................................",
+          "hex_payload": "1703030064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    "1": {
+      "stream_id": 1,
+      "protocol": "IMAPS",
+      "client": {
+        "ip": "192.168.1.50",
+        "port": 49153
+      },
+      "server": {
+        "ip": "198.51.100.25",
+        "port": 993
+      },
+      "packet_count": 13,
+      "payload_bytes": 850,
+      "duration": 0.14,
+      "encrypted": true,
+      "redacted": false,
+      "redaction_count": 0,
+      "chunks": [
+        {
+          "frame_number": 24,
+          "direction": "client_to_server",
+          "timestamp": 0.55,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 25,
+          "direction": "client_to_server",
+          "timestamp": 0.56,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 26,
+          "direction": "client_to_server",
+          "timestamp": 0.57,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 27,
+          "direction": "client_to_server",
+          "timestamp": 0.58,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 28,
+          "direction": "client_to_server",
+          "timestamp": 0.59,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 29,
+          "direction": "client_to_server",
+          "timestamp": 0.6,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 30,
+          "direction": "client_to_server",
+          "timestamp": 0.61,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 31,
+          "direction": "client_to_server",
+          "timestamp": 0.62,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 32,
+          "direction": "client_to_server",
+          "timestamp": 0.63,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "frame_number": 33,
+          "direction": "client_to_server",
+          "timestamp": 0.64,
+          "payload": "....P................................................................................",
+          "hex_payload": "1703030050bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ]
+    }
+  },
+  "tls_handshakes": [
+    {
+      "frame": "5",
+      "timestamp": "2026-08-31T20:12:01.297806000+0530",
+      "tcp_stream": "0",
+      "src": "198.51.100.25",
+      "dst": "192.168.1.50",
+      "src_port": "465",
+      "dst_port": "49152",
+      "tls_version": "TLS 1.2",
+      "handshake_type": "ServerHello",
+      "cipher_suites": [
+        "0x1302"
+      ],
+      "sni": ""
+    }
+  ],
+  "owner_user_id": "system_demo",
+  "upload_timestamp": "2026-09-23T10:48:25.795230",
+  "original_filename": "secure_mail.pcap",
+  "file_size": 4858,
+  "status": "completed"
+}
