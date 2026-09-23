@@ -6,9 +6,8 @@ Preserves forensic evidence references (frame, stream, SNI, endpoints).
 
 from typing import List, Dict, Optional, Any
 
-
-# Known weak cipher suite keywords
-WEAK_CIPHERS = ['RC4', 'DES', '3DES', 'NULL', 'EXPORT', 'anon', 'MD5']
+from core.cipher_suites import lookup as lookup_cipher_suite
+from services.threat_intel_feed import get_threat_intel_feed
 
 # Known weak signature algorithms
 WEAK_SIG_ALGOS = ['md5', 'sha1', 'md2']
@@ -22,6 +21,20 @@ MIN_KEY_SIZES = {
     'dh': 2048,
     'dhe': 2048,
 }
+
+
+# Grade boundaries align with calculate_risk_score()'s level thresholds
+# (20/40/70) so a letter grade can never contradict the risk level.
+GRADE_THRESHOLDS = [(70, 'F'), (55, 'E'), (40, 'D'), (20, 'C'), (10, 'B')]
+# Minimum grade implied by a risk level, used when ML fusion raises the level.
+LEVEL_MIN_GRADE = {'MEDIUM': 'C', 'HIGH': 'D', 'CRITICAL': 'F'}
+
+
+def risk_score_to_grade(score: int) -> str:
+    for threshold, grade in GRADE_THRESHOLDS:
+        if score >= threshold:
+            return grade
+    return 'A'
 
 
 class SecurityEngine:
@@ -50,7 +63,10 @@ class SecurityEngine:
         self.check_weak_signatures()
         self.check_key_sizes()
         self.check_missing_starttls()
+        self.check_forward_secrecy()
         self.check_certificate_chains()
+        self.check_known_malicious_certificates()
+        self.check_email_authentication()
 
         return self.findings
 
@@ -190,35 +206,104 @@ class SecurityEngine:
 
     # ─── CHECK 5: WEAK CIPHERS ───
     def check_weak_ciphers(self):
+        """Flag weak cipher suites that were actually negotiated (ServerHello),
+        not merely offered by the client -- a client listing a weak cipher
+        among many options isn't itself a vulnerability if the server never
+        selects it. tshark reports the negotiated cipher as a raw hex code
+        (e.g. "0x0035"), so this looks it up in the IANA cipher-suite
+        registry rather than string-matching cipher names."""
         handshakes = self.data.get('tls_handshakes', [])
-        weak_found = set()
+        weak_found: Dict[str, str] = {}  # cipher_code -> name
 
         for hs in handshakes:
-            for cipher in hs.get('cipher_suites', []):
-                cipher_upper = cipher.upper()
-                for weak in WEAK_CIPHERS:
-                    if weak.upper() in cipher_upper:
-                        weak_found.add(cipher)
+            if hs.get('handshake_type') != 'ServerHello':
+                continue
+            ciphers = hs.get('cipher_suites', [])
+            if not ciphers:
+                continue
+            info = lookup_cipher_suite(ciphers[0])
+            if info and info['weak']:
+                weak_found[ciphers[0]] = f"{info['name']} ({info['weak_reason']})"
 
         if weak_found:
+            names = list(weak_found.values())
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='weak_cipher',
                 rule_id='CIPHER_WEAK_DETECTED',
                 title='Weak Cipher Suites Detected',
                 description=(
-                    f"The following weak cipher suites were offered or "
-                    f"selected: {', '.join(list(weak_found)[:5])}. "
-                    f"These ciphers are vulnerable to known attacks "
-                    f"(BEAST, SWEET32, RC4 biases)."
+                    f"The following weak cipher suite(s) were negotiated: "
+                    f"{', '.join(names[:5])}. These are vulnerable to known "
+                    f"attacks (BEAST, Sweet32, RC4 keystream biases, FREAK) "
+                    f"or provide no encryption at all."
                 ),
-                evidence=f"Weak ciphers: {', '.join(list(weak_found)[:5])}",
-                structured_evidence={'weak_ciphers': list(weak_found)},
+                evidence=f"Negotiated weak cipher(s): {', '.join(names[:5])}",
+                structured_evidence={'weak_ciphers': names},
                 remediation=(
-                    "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers\n"
+                    "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers from the server config\n"
                     "2. Prioritize AEAD ciphers: AES-GCM, ChaCha20-Poly1305\n"
                     "3. Use TLS 1.3 which only allows strong ciphers\n"
                     "4. Test with: testssl.sh mail.example.com"
+                )
+            )
+
+    # ─── CHECK 11: FORWARD SECRECY ───
+    def check_forward_secrecy(self):
+        """Flag TLS sessions that negotiated a static (non-ephemeral) key
+        exchange -- static RSA or static (EC)DH -- instead of DHE/ECDHE.
+        TLS 1.3 is skipped entirely since it mandates ephemeral key exchange
+        by design and is therefore always forward-secret."""
+        handshakes = self.data.get('tls_handshakes', [])
+        weak_kex_sessions = []
+
+        for hs in handshakes:
+            if hs.get('handshake_type') != 'ServerHello':
+                continue
+            if hs.get('tls_version') == 'TLS 1.3':
+                continue
+
+            ciphers = hs.get('cipher_suites', [])
+            if not ciphers:
+                continue
+
+            info = lookup_cipher_suite(ciphers[0])
+            if not info:
+                continue  # unrecognized cipher code -- don't guess at its properties
+
+            if not info['forward_secret']:
+                weak_kex_sessions.append({
+                    'src': hs.get('src') or 'unknown',
+                    'dst': hs.get('dst') or 'unknown',
+                    'cipher': info['name'],
+                    'tls_version': hs.get('tls_version'),
+                })
+
+        if weak_kex_sessions:
+            examples = [
+                f"{s['src']}→{s['dst']} ({s['cipher']}, {s['tls_version']})"
+                for s in weak_kex_sessions[:3]
+            ]
+            self._add_finding(
+                severity='HIGH',
+                finding_type='no_forward_secrecy',
+                rule_id='TLS_NO_FORWARD_SECRECY',
+                title='TLS Session Without Forward Secrecy',
+                description=(
+                    f"{len(weak_kex_sessions)} TLS session(s) negotiated a static "
+                    f"(non-ephemeral) key exchange -- RSA or static (EC)DH -- instead "
+                    f"of DHE/ECDHE. Without forward secrecy, recording this encrypted "
+                    f"traffic today and later compromising the server's private key "
+                    f"would let an attacker decrypt every past session that used it, "
+                    f"not just future ones."
+                ),
+                evidence='; '.join(examples),
+                structured_evidence={'sessions': weak_kex_sessions},
+                remediation=(
+                    "1. Configure the server to prefer ECDHE or DHE cipher suites\n"
+                    "2. Disable static RSA and static (EC)DH key-exchange cipher suites\n"
+                    "3. Prefer TLS 1.3, which removes non-ephemeral key exchange entirely\n"
+                    "4. Verify with: nmap --script ssl-enum-ciphers -p 465 mail.example.com"
                 )
             )
 
@@ -373,6 +458,67 @@ class SecurityEngine:
                     remediation=pki_f.get('remediation', 'Renew or reconfigure certificate.')
                 )
 
+    # ─── CHECK 9: THREAT INTEL (SSLBL) ───
+    def check_known_malicious_certificates(self):
+        """Flags certificates matching abuse.ch's SSLBL blacklist of SHA1
+        fingerprints seen on botnet C2 infrastructure. Unlike every other
+        check here, this is not a property of the certificate itself --
+        it's external threat intelligence, so a well-formed, validly-signed
+        certificate can still trigger it."""
+        certificates = self.data.get('certificates', [])
+        feed = get_threat_intel_feed()
+        matches = []
+
+        for cert in certificates:
+            listing = feed.lookup(cert.get('fingerprint_sha1'))
+            if listing:
+                matches.append({
+                    'subject': cert.get('subject', 'Unknown'),
+                    'fingerprint_sha1': cert.get('fingerprint_sha1', ''),
+                    'listed_since': listing.get('listed_since', ''),
+                    'reason': listing.get('reason', ''),
+                })
+
+        if matches:
+            subjects = [m['subject'] for m in matches[:3]]
+            self._add_finding(
+                severity='CRITICAL',
+                finding_type='known_malicious_certificate',
+                rule_id='CERT_THREAT_INTEL_MATCH',
+                title='Certificate Matches Known-Malicious Threat Intel',
+                description=(
+                    f"{len(matches)} certificate(s) match entries in the abuse.ch SSLBL "
+                    f"blacklist of certificates observed on botnet command-and-control "
+                    f"infrastructure. This connection is cryptographically valid but "
+                    f"terminates at a host known to be malicious."
+                ),
+                evidence=f"Affected: {', '.join(subjects)}",
+                structured_evidence={'affected_certificates': matches, 'source': 'abuse.ch SSLBL'},
+                remediation=(
+                    "1. Treat this host as compromised and terminate the connection\n"
+                    "2. Isolate the endpoint and investigate for related C2 traffic\n"
+                    "3. Block the certificate's SHA1 fingerprint and associated IP(s) at the network perimeter"
+                )
+            )
+
+    # ─── CHECK 10: EMAIL AUTHENTICATION (PASSIVE SPF/DKIM/DMARC) ───
+    def check_email_authentication(self):
+        """Findings from SPF/DKIM/DMARC evidence found in the capture itself
+        (message headers, plaintext DNS). One finding per rule, listing every
+        affected message/record, so a busy capture doesn't inflate the score."""
+        for issue in self.data.get('email_auth', {}).get('issues', []):
+            affected = issue['affected']
+            self._add_finding(
+                severity=issue['severity'],
+                finding_type='email_authentication',
+                rule_id=issue['rule_id'],
+                title=issue['title'],
+                description=f"{issue['description']} ({len(affected)} occurrence(s) in this capture.)",
+                evidence="; ".join(affected[:3]) + (f" (+{len(affected) - 3} more)" if len(affected) > 3 else ""),
+                structured_evidence={'affected': affected, 'source': 'passive capture analysis'},
+                remediation=issue['remediation'],
+            )
+
     # ─── RISK SCORING ───
     def calculate_risk_score(self) -> Dict:
         """Calculate overall risk score (0-100)"""
@@ -411,6 +557,7 @@ class SecurityEngine:
         return {
             'risk_score': risk_score,
             'risk_level': level,
+            'risk_grade': risk_score_to_grade(risk_score),
             'finding_score': finding_score,
             'encryption_penalty': round(encryption_penalty, 1),
             'critical_count': sum(1 for f in self.findings if f['severity'] == 'CRITICAL'),

@@ -45,3 +45,7 @@ frontend/dist/
 # Backend
 backend/__pycache__/
 backend/venv/
+backend/knowledge_store/
+backend/app/knowledge_base/sources/pending/
+backend/watch/
+backend/threat_intel/

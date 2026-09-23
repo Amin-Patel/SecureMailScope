@@ -9,10 +9,11 @@ import os
 import json
 import uuid
 import re
+import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,12 +27,35 @@ from slowapi.errors import RateLimitExceeded
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
 from app.services.report_generator import ReportGenerator
 from app.core.auth import get_current_user, get_optional_user, require_admin_role
+from app.services.knowledge_base import get_knowledge_base
+from app.services import knowledge_ingestion
+from app.services.pcap_watcher import PcapWatcher
+from app.services import email_auth_checker
 
 # ─── RATE LIMITER SETUP ───
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
-# ─── APP SETUP ───
+# ─── LIFESPAN ───
+watcher: "PcapWatcher | None" = None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start the folder watcher only when WATCH_DIR is set (opt-in)."""
+    global watcher
+    watch_dir = os.getenv("WATCH_DIR", "").strip()
+    if watch_dir:
+        watcher = PcapWatcher(
+            Path(watch_dir),
+            analyze_watched_file,
+            poll_seconds=float(os.getenv("WATCH_POLL_SECONDS", "5")),
+        )
+        watcher.start()
+    yield
+    if watcher:
+        watcher.stop()
 app = FastAPI(
+    lifespan=lifespan,
     title="SecureMailScope API",
     description="AI-Driven Email Security Assessment & Forensics",
     version="1.0.0"
@@ -280,6 +304,16 @@ async def get_report(
             content=data,
             headers={"Content-Disposition": f"attachment; filename=SecureMailScope_Report_{cid}.json"}
         )
+    elif format == "pdf":
+        try:
+            pdf_bytes = ReportGenerator.generate_pdf_report(data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=SecureMailScope_Report_{capture_id}.pdf"}
+        )
     else:
         html_content = ReportGenerator.generate_html_report(data)
         return HTMLResponse(content=html_content)
@@ -398,7 +432,59 @@ async def delete_analyses_batch(
     }
 
 
-# ─── 8. STREAM RETRIEVAL ───
+# ─── 8. KNOWLEDGE BASE (RAG) ───
+@app.get("/api/knowledge/sources")
+async def list_knowledge_sources():
+    """List reference documents currently live in the retrieval index."""
+    kb = get_knowledge_base()
+    return {"sources": kb.list_sources()}
+
+
+@app.get("/api/knowledge/gaps")
+async def list_knowledge_gaps():
+    """List finding types where retrieval has come back empty or below the confidence threshold."""
+    return {"gaps": knowledge_ingestion.list_gaps()}
+
+
+@app.post("/api/knowledge/gaps/{finding_type}/propose")
+async def propose_knowledge_source(finding_type: str):
+    """Draft a candidate reference document for a coverage gap via Gemini.
+    Lands in the pending review queue -- does not go live until approved."""
+    try:
+        draft_path = knowledge_ingestion.propose_source_for_gap(finding_type)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"success": True, "finding_type": finding_type, "draft_path": str(draft_path)}
+
+
+@app.get("/api/knowledge/pending")
+async def list_pending_knowledge_sources():
+    """List AI-drafted reference documents awaiting human approval."""
+    return {"pending": knowledge_ingestion.list_pending()}
+
+
+@app.post("/api/knowledge/pending/{finding_type}/approve")
+async def approve_pending_knowledge_source(finding_type: str):
+    """Publish an approved draft into the live retrieval index."""
+    try:
+        chunk_count = knowledge_ingestion.approve_pending(finding_type)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"success": True, "finding_type": finding_type, "chunks_ingested": chunk_count}
+
+
+@app.delete("/api/knowledge/pending/{finding_type}")
+async def reject_pending_knowledge_source(finding_type: str):
+    """Discard a pending draft without publishing it."""
+    deleted = knowledge_ingestion.reject_pending(finding_type)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No pending draft for finding_type: {finding_type}")
+    return {"success": True, "finding_type": finding_type, "message": "Draft discarded."}
+
+
+# ─── 9. STREAM RETRIEVAL ───
 @app.get("/api/analysis/{capture_id}/stream/{stream_id}")
 @limiter.limit("100/minute")
 async def get_stream_details(
@@ -495,6 +581,35 @@ async def delete_kb_article(
 
 
 # ─── HELPER PIPELINE FUNCTION ───
+
+def analyze_and_store(
+    file_path: Path,
+    original_filename: str,
+    capture_id: str,
+    file_size: int,
+    owner_user_id: str = "anonymous"
+) -> dict:
+    """Run the analyzer, persist the result to the results store, and return it.
+    Raises RuntimeError if the analyzer reports failure."""
+    analyzer = EmailPCAPAnalyzer(str(file_path))
+    result = analyzer.analyze()
+
+    if not result.get("success"):
+        raise RuntimeError(f"Analysis failed: {result.get('error')}")
+
+    result["capture_id"] = capture_id
+    result["owner_user_id"] = owner_user_id
+    result["upload_timestamp"] = datetime.now().isoformat()
+    result["original_filename"] = original_filename
+    result["file_size"] = file_size
+    result["status"] = "completed"
+
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    with open(results_file, "w") as f:
+        json.dump(result, f, indent=2, default=str)
+    return result
+
+
 def run_analysis_pipeline(
     file_path: Path,
     original_filename: str,
@@ -504,30 +619,56 @@ def run_analysis_pipeline(
 ):
     """Executes the PCAP analyzer, saves the payload, and returns JSON."""
     try:
-        analyzer = EmailPCAPAnalyzer(str(file_path))
-        result = analyzer.analyze()
-
-        if not result.get("success"):
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {result.get('error')}")
-
-        result["capture_id"] = capture_id
-        result["owner_user_id"] = owner_user_id
-        result["upload_timestamp"] = datetime.now().isoformat()
-        result["original_filename"] = original_filename
-        result["file_size"] = file_size
-        result["status"] = "completed"
-
-        # Save to results
-        results_file = RESULTS_DIR / f"{capture_id}.json"
-        with open(results_file, "w") as f:
-            json.dump(result, f, indent=2, default=str)
-
-        return JSONResponse(content=result)
-
+        return JSONResponse(content=analyze_and_store(
+            file_path, original_filename, capture_id, file_size, owner_user_id
+        ))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {str(e)}")
+
+
+def analyze_watched_file(path: Path):
+    """Watcher callback: analyze one dropped-in capture into the normal results store.
+    Returns the capture_id, or None if analysis failed."""
+    capture_id = f"watch_{path.stem}_{uuid.uuid4().hex[:6]}"
+    # Copy first so the analyzer reads a stable file even if the source is rotated/removed.
+    staged = UPLOAD_DIR / f"{capture_id}{path.suffix.lower()}"
+    try:
+        shutil.copyfile(path, staged)
+        analyze_and_store(staged, path.name, capture_id, staged.stat().st_size)
+        return capture_id
+    except Exception as e:
+        print(f"[!] Watched file analysis failed for {path.name}: {e}")
+        return None
+
+
+# ─── 9. EMAIL AUTHENTICATION (ACTIVE DNS CHECK) ───
+class EmailAuthRequest(BaseModel):
+    domain: str
+    dkim_selector: Optional[str] = None
+
+
+@app.post("/api/email-auth-check")
+def email_auth_check(req: EmailAuthRequest):
+    """SPF/DKIM/DMARC lookup for a domain. Active DNS queries, user-initiated,
+    and intentionally separate from the passive PCAP analysis and its risk score.
+    (Sync route so the blocking DNS calls run in FastAPI's threadpool.)"""
+    try:
+        return email_auth_checker.run_email_auth_checks(req.domain, req.dkim_selector)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+# ─── 8. LIVE MONITORING STATUS ───
+@app.get("/api/watch/status")
+async def watch_status():
+    """Whether folder monitoring is active, and what it has processed recently."""
+    if watcher is None:
+        return {"enabled": False, "running": False, "recent": []}
+    return {"enabled": True, **watcher.status()}
 
 
 if __name__ == "__main__":

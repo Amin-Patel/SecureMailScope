@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Tuple, Any
 
 import certifi
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, ec, ed25519, ed448, rsa, dsa
 from cryptography.x509.oid import ExtensionOID, NameOID, ExtendedKeyUsageOID
 
@@ -363,6 +364,7 @@ class CertificateAnalyzer:
             'issuer': issuer_str,
             'issuer_common_name': issuer_common_name,
             'serial_number': serial_hex,
+            'fingerprint_sha1': cert.fingerprint(hashes.SHA1()).hex().upper(),
             'not_before': not_before.isoformat(),
             'not_after': not_after.isoformat(),
             'is_expired': is_expired,

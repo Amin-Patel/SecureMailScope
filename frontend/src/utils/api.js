@@ -118,6 +118,34 @@ export async function getAnalyses() {
 }
 
 /**
+ * Active SPF/DKIM/DMARC DNS check for a domain (separate from passive PCAP analysis).
+ */
+export async function checkEmailAuth(domain, dkimSelector) {
+  try {
+    const response = await apiClient.post('/email-auth-check', {
+      domain: domain.trim(),
+      dkim_selector: dkimSelector?.trim() || null,
+    });
+    return response.data;
+  } catch (err) {
+    throw new Error(err.response?.data?.detail || parseError(err));
+  }
+}
+
+/**
+ * Folder-monitoring status (enabled flag, current file, recently processed captures).
+ * Never throws: a failed poll just reports monitoring as unavailable.
+ */
+export async function getWatchStatus() {
+  try {
+    const response = await apiClient.get('/watch/status');
+    return response.data;
+  } catch {
+    return { enabled: false, running: false, recent: [] };
+  }
+}
+
+/**
  * Trigger the analysis of a demo/sample PCAP file on the server.
  * @param {string} demoName The filename of the demo PCAP (e.g. smtp.pcap or rsasnakeoil2.cap).
  * @returns {Promise<Object>} The complete analysis payload.
