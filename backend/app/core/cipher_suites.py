@@ -108,9 +108,14 @@ CIPHER_SUITE_REGISTRY: Dict[str, CipherSuiteInfo] = {
     "0xc019": _entry("TLS_ECDH_anon_WITH_AES_256_CBC_SHA", "ECDH_anon", True, True, "anonymous key exchange (no authentication)"),
 }
 
+CIPHER_SUITE_BY_NAME: Dict[str, CipherSuiteInfo] = {
+    info["name"].upper(): info for info in CIPHER_SUITE_REGISTRY.values()
+}
 
-def lookup(cipher_code: str) -> Optional[CipherSuiteInfo]:
-    """Look up a cipher suite by its raw tshark hex code (case-insensitive)."""
-    if not cipher_code:
+
+def lookup(cipher_code_or_name: str) -> Optional[CipherSuiteInfo]:
+    """Look up a cipher suite by its raw tshark hex code (case-insensitive) or IANA name."""
+    if not cipher_code_or_name:
         return None
-    return CIPHER_SUITE_REGISTRY.get(cipher_code.strip().lower())
+    key = cipher_code_or_name.strip()
+    return CIPHER_SUITE_REGISTRY.get(key.lower()) or CIPHER_SUITE_BY_NAME.get(key.upper())

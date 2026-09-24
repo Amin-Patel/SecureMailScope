@@ -6,8 +6,12 @@ Preserves forensic evidence references (frame, stream, SNI, endpoints).
 
 from typing import List, Dict, Optional, Any
 
-from core.cipher_suites import lookup as lookup_cipher_suite
-from services.threat_intel_feed import get_threat_intel_feed
+try:
+    from app.core.cipher_suites import lookup as lookup_cipher_suite
+    from app.services.threat_intel_feed import get_threat_intel_feed
+except ImportError:
+    from core.cipher_suites import lookup as lookup_cipher_suite
+    from services.threat_intel_feed import get_threat_intel_feed
 
 # Known weak signature algorithms
 WEAK_SIG_ALGOS = ['md5', 'sha1', 'md2']
@@ -216,14 +220,15 @@ class SecurityEngine:
         weak_found: Dict[str, str] = {}  # cipher_code -> name
 
         for hs in handshakes:
-            if hs.get('handshake_type') != 'ServerHello':
+            if hs.get('handshake_type') and hs.get('handshake_type') != 'ServerHello':
                 continue
             ciphers = hs.get('cipher_suites', [])
             if not ciphers:
                 continue
-            info = lookup_cipher_suite(ciphers[0])
-            if info and info['weak']:
-                weak_found[ciphers[0]] = f"{info['name']} ({info['weak_reason']})"
+            for c in ciphers:
+                info = lookup_cipher_suite(c)
+                if info and info['weak']:
+                    weak_found[c] = f"{info['name']} ({info['weak_reason']})"
 
         if weak_found:
             names = list(weak_found.values())
@@ -258,7 +263,7 @@ class SecurityEngine:
         weak_kex_sessions = []
 
         for hs in handshakes:
-            if hs.get('handshake_type') != 'ServerHello':
+            if hs.get('handshake_type') and hs.get('handshake_type') != 'ServerHello':
                 continue
             if hs.get('tls_version') == 'TLS 1.3':
                 continue
@@ -267,17 +272,18 @@ class SecurityEngine:
             if not ciphers:
                 continue
 
-            info = lookup_cipher_suite(ciphers[0])
-            if not info:
-                continue  # unrecognized cipher code -- don't guess at its properties
+            for c in ciphers:
+                info = lookup_cipher_suite(c)
+                if not info:
+                    continue  # unrecognized cipher code -- don't guess at its properties
 
-            if not info['forward_secret']:
-                weak_kex_sessions.append({
-                    'src': hs.get('src') or 'unknown',
-                    'dst': hs.get('dst') or 'unknown',
-                    'cipher': info['name'],
-                    'tls_version': hs.get('tls_version'),
-                })
+                if not info['forward_secret']:
+                    weak_kex_sessions.append({
+                        'src': hs.get('src') or 'unknown',
+                        'dst': hs.get('dst') or 'unknown',
+                        'cipher': info['name'],
+                        'tls_version': hs.get('tls_version'),
+                    })
 
         if weak_kex_sessions:
             examples = [
