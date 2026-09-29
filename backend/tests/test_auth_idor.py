@@ -19,7 +19,10 @@ client = TestClient(app)
 USER_A_ID = "11111111-1111-4111-8111-111111111111"
 USER_B_ID = "22222222-2222-4222-8222-222222222222"
 
-SECRET = SUPABASE_JWT_SECRET or "super-secret-jwt-token-with-at-least-32-bytes-long"
+SECRET = SUPABASE_JWT_SECRET or "test-suite-fixture-jwt-secret-at-least-32-bytes"
+import os
+if not os.getenv("SUPABASE_JWT_SECRET"):
+    os.environ["JWT_SECRET"] = SECRET
 
 
 def create_test_jwt(user_id: str, email: str = "user@test.com", expired: bool = False, bad_alg: bool = False, bad_iss: bool = False) -> str:
@@ -291,5 +294,60 @@ def test_rate_limit_exhaustion_returns_429():
         assert hit_429, "Rate limiter failed to trigger HTTP 429 Too Many Requests after exceeding threshold."
     finally:
         limiter.reset()
+
+
+# ─── TEST 9: ES256 ASYMMETRIC JWT VERIFICATION ───
+def test_jwt_es256_valid_token_accepted():
+    from unittest.mock import MagicMock, patch
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from app.core.auth import decode_and_verify_supabase_jwt
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public_key = private_key.public_key()
+    now = int(time.time())
+
+    payload = {
+        "sub": USER_A_ID,
+        "email": "user_a@securemailscope.com",
+        "role": "authenticated",
+        "iss": "https://ymwflcngyzawphnvezmr.supabase.co/auth/v1",
+        "iat": now,
+        "exp": now + 3600
+    }
+    token = jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": "mock-es256-key"})
+
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = public_key
+    mock_jwks = MagicMock()
+    mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+
+    with patch("app.core.auth.get_jwks_client", return_value=mock_jwks):
+        user = decode_and_verify_supabase_jwt(token)
+        assert user["user_id"] == USER_A_ID
+        assert user["email"] == "user_a@securemailscope.com"
+
+
+def test_jwt_es256_invalid_signature_rejected():
+    from unittest.mock import MagicMock, patch
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from fastapi import HTTPException
+    from app.core.auth import decode_and_verify_supabase_jwt
+
+    key1 = ec.generate_private_key(ec.SECP256R1())
+    key2 = ec.generate_private_key(ec.SECP256R1())
+    now = int(time.time())
+
+    token = jwt.encode({"sub": USER_A_ID, "exp": now + 3600}, key1, algorithm="ES256", headers={"kid": "mock-key"})
+
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = key2.public_key() # Wrong public key
+    mock_jwks = MagicMock()
+    mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+
+    with patch("app.core.auth.get_jwks_client", return_value=mock_jwks):
+        with pytest.raises(HTTPException) as exc_info:
+            decode_and_verify_supabase_jwt(token)
+        assert exc_info.value.status_code == 401
+
 
 

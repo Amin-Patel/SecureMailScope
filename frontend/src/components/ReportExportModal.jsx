@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { downloadReport } from '../utils/api';
 
 export function ReportExportModal({ isOpen, onClose, results }) {
   // Keydown event listener for Escape key and locking body scroll
@@ -43,16 +44,7 @@ export function ReportExportModal({ isOpen, onClose, results }) {
 
   const handleDownloadPdf = async () => {
     try {
-      const res = await fetch(`http://localhost:8001/api/analysis/${captureId}/report?format=pdf`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const url = URL.createObjectURL(await res.blob());
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `SecureMailScope_Report_${captureId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await downloadReport(captureId, 'pdf');
     } catch (err) {
       console.error('Failed to download PDF report:', err);
       alert('PDF export failed. Is the backend running?');

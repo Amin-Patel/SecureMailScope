@@ -1,14 +1,23 @@
 // src/utils/api.js
 // Real API service layer for SecureMailScope frontend.
-// Uses Axios to communicate with the FastAPI backend at http://localhost:8001/api
+// Uses Axios to communicate with the FastAPI backend via configurable base URL
 // Automatically attaches Supabase Auth JWT Bearer token to all outgoing requests.
 
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
 
+// Base API configuration from Vite environment variable
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001'
+).replace(/\/+$/, '');
+
+export const API_URL = API_BASE_URL.endsWith('/api')
+  ? API_BASE_URL
+  : `${API_BASE_URL}/api`;
+
 // Create a reusable Axios instance with the required base URL.
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8001/api',
+  baseURL: API_URL,
   timeout: 30000, // 30 seconds timeout
 });
 
@@ -175,7 +184,7 @@ export async function checkBackendHealth() {
     const response = await apiClient.get('/health');
     return response.data;
   } catch (err) {
-    throw new Error('Backend disconnected. Ensure FastAPI is running on port 8001.');
+    throw new Error('Backend disconnected. Ensure SecureMailScope API server is reachable.');
   }
 }
 
@@ -256,6 +265,74 @@ export async function getStreamDetails(captureId, streamId) {
   try {
     const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/stream/${encodeURIComponent(streamId)}`);
     return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Construct report URL path
+ * @param {string} captureId
+ * @param {'html' | 'pdf' | 'json'} format
+ * @returns {string}
+ */
+export function getReportUrl(captureId, format = 'html') {
+  return `${API_URL}/analysis/${encodeURIComponent(captureId)}/report?format=${format}`;
+}
+
+/**
+ * Download a generated report (PDF, HTML, or JSON) with Supabase authentication attached.
+ * @param {string} captureId
+ * @param {'pdf' | 'html' | 'json'} format
+ */
+export async function downloadReport(captureId, format = 'pdf') {
+  try {
+    const cleanId = encodeURIComponent(captureId);
+    const response = await apiClient.get(`/analysis/${cleanId}/report?format=${format}`, {
+      responseType: 'blob',
+    });
+
+    const mimeTypes = {
+      pdf: 'application/pdf',
+      html: 'text/html',
+      json: 'application/json',
+    };
+    const mimeType = mimeTypes[format] || 'application/octet-stream';
+    const blob = new Blob([response.data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `SecureMailScope_Report_${captureId}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Open the HTML executive forensic report in a new browser tab with Supabase authentication attached.
+ * @param {string} captureId
+ */
+export async function viewReportHtml(captureId) {
+  try {
+    const cleanId = encodeURIComponent(captureId);
+    const response = await apiClient.get(`/analysis/${cleanId}/report?format=html`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
   } catch (err) {
     const msg = parseError(err);
     const error = new Error(msg);

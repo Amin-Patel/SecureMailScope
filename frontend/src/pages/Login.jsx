@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const VIDEO_SRC =
@@ -7,7 +7,8 @@ const VIDEO_SRC =
 
 export function Login() {
   const navigate = useNavigate();
-  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const location = useLocation();
+  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
 
   // Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState('signin');
@@ -24,6 +25,23 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+
+  // Capture any errors passed via route state (e.g. from OAuth redirect or timeout)
+  useEffect(() => {
+    if (location.state?.error) {
+      setError(location.state.error);
+    }
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+    }
+  }, [location.state]);
+
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const validateEmail = (val) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
@@ -68,13 +86,25 @@ export function Login() {
 
     try {
       if (authMode === 'signup') {
-        await signUp({ email: trimmedEmail, password, fullName: fullName.trim() });
-        // After signup, redirect to sign-in page
-        setSuccessMessage('Account created successfully! Please sign in with your credentials.');
-        setAuthMode('signin');
-        setPassword('');
-        setConfirmPassword('');
-        setFullName('');
+        const data = await signUp({ email: trimmedEmail, password, fullName: fullName.trim() });
+        if (data?.session) {
+          // Email confirmation disabled: user is signed in immediately
+          localStorage.setItem('sms_auth', 'true');
+          localStorage.setItem('sms_email', trimmedEmail);
+          navigate('/dashboard', { replace: true });
+        } else if (data?.user?.identities && data.user.identities.length === 0) {
+          setError('An account with this email address already exists. Please sign in instead.');
+          setAuthMode('signin');
+        } else {
+          // Email confirmation enabled: verification link sent
+          setSuccessMessage(
+            'Account created successfully! If email confirmation is enabled on your project, please verify your email before signing in.'
+          );
+          setAuthMode('signin');
+          setPassword('');
+          setConfirmPassword('');
+          setFullName('');
+        }
       } else {
         await signIn({ email: trimmedEmail, password });
         localStorage.setItem('sms_auth', 'true');
@@ -82,7 +112,7 @@ export function Login() {
         navigate('/dashboard', { replace: true });
       }
     } catch (err) {
-      setError(err.message || 'Unable to sign in right now. Please try again.');
+      setError(err.message || 'Unable to complete request. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -96,7 +126,7 @@ export function Login() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err.message || 'Google sign-in is not yet configured for this workspace. Please sign in with email.');
+      setError(err.message || 'Google sign-in could not be initiated. Please sign in with email.');
       setLoading(false);
     }
   };

@@ -1,0 +1,40 @@
+# Virtual environments
+backend/venv/
+venv/
+.venv/
+env/
+
+# Node dependencies & frontend builds
+frontend/node_modules/
+node_modules/
+dist/
+build/
+
+# Version control & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Environment files & secrets
+.env
+.env.*
+*.env
+
+# Runtime data & uploads
+backend/results/
+backend/uploads/
+results/
+uploads/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & temp files
+*.log
+scratch/

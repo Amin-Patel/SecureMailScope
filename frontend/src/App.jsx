@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
+import { AuthCallback } from './pages/AuthCallback';
 import { NewAnalysis } from './pages/NewAnalysis';
 import { Dashboard } from './pages/Dashboard';
 import { Analysis } from './pages/Analysis';
@@ -99,6 +100,7 @@ export default function App() {
 
           {/* Public Authentication Pages */}
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
 

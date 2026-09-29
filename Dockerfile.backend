@@ -1,0 +1,45 @@
+# ============================================================
+# SecureMailScope — Backend Dockerfile
+# Production image for the FastAPI + TShark + PyShark server.
+# Build context: project root (so the backend/ directory is included).
+# ============================================================
+
+FROM python:3.11-slim
+
+# System dependencies: tshark (for PyShark packet analysis)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tshark \
+    libpcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Allow tshark to be run as non-root (required inside container)
+RUN setcap cap_net_raw,cap_net_admin+eip /usr/bin/dumpcap || true
+
+# Create unprivileged user
+RUN useradd --create-home --shell /bin/bash appuser
+
+WORKDIR /app
+
+# Install Python dependencies first (cached layer)
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source
+COPY backend/ .
+
+# Create required runtime directories (owned by appuser)
+RUN mkdir -p uploads results threat_intel knowledge_store \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose FastAPI port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')" || exit 1
+
+# Run with uvicorn — 1 worker for consistent in-memory rate limiting with slowapi
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

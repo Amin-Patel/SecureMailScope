@@ -63,13 +63,16 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Configuration
+# CORS Configuration — restrict origins in production via ALLOWED_ORIGINS env var
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "https://mailscope.dpdns.org,http://localhost:5173,http://localhost:3000").strip()
+CORS_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Open for development & demo environments
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 # ─── DIRECTORIES ───
@@ -285,10 +288,10 @@ async def get_results(
 async def get_report(
     request: Request,
     capture_id: str,
-    format: str = Query("html", pattern="^(html|json)$"),
+    format: str = Query("html", pattern="^(html|json|pdf)$"),
     optional_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
-    """Generate and return an official Forensic Assessment Report in HTML or JSON format."""
+    """Generate and return an official Forensic Assessment Report in HTML, JSON, or PDF format."""
     cid = sanitize_capture_id(capture_id)
     results_file = RESULTS_DIR / f"{cid}.json"
     if not results_file.exists():

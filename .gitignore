@@ -11,6 +11,7 @@ env/
 .env
 .env.*
 !.env.example
+frontend/.env.production
 
 # Node
 node_modules/
@@ -49,3 +50,8 @@ backend/knowledge_store/
 backend/app/knowledge_base/sources/pending/
 backend/watch/
 backend/threat_intel/
+backend/results/
+
+# Audit / scratch docs (not part of source)
+CURRENT_STATE_AUDIT.md
+
