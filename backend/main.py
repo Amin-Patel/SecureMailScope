@@ -4,10 +4,19 @@ Serves the PCAP analysis pipeline, AI enrichment, demo presets, and forensic rep
 """
 
 import os
+import sys
 import json
 import uuid
 from pathlib import Path
 from datetime import datetime
+
+# Ensure UTF-8 console output on Windows to prevent UnicodeEncodeError
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from typing import List
 from pydantic import BaseModel
@@ -115,9 +124,23 @@ async def list_demo_samples():
             "description": "100% encrypted email transport using modern TLS 1.2/1.3 and AEAD cipher suites.",
             "file": "secure_mail.pcap",
             "expected_risk": "CLEAN / LOW (0/100)"
+        },
+        {
+            "id": "sih_comprehensive",
+            "name": "Comprehensive SIH Demo (Multi-Protocol)",
+            "description": "Multi-protocol email capture across SMTP, IMAP, and POP3 with TLS 1.2 and plaintext traffic.",
+            "file": "SecureMailScope_SIHDemo.pcap",
+            "expected_risk": "MEDIUM (37/100)"
         }
     ]
-    return {"samples": samples}
+    return JSONResponse(
+        content={"samples": samples},
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 
 @app.post("/api/demo/load/{sample_id}")
@@ -126,7 +149,8 @@ async def load_demo_sample(sample_id: str):
     sample_map = {
         "vulnerable_smtp": "smtp.pcap",
         "legacy_ssl3": "rsasnakeoil2.cap",
-        "secure_enterprise": "secure_mail.pcap"
+        "secure_enterprise": "secure_mail.pcap",
+        "sih_comprehensive": "SecureMailScope_SIHDemo.pcap"
     }
 
     if sample_id not in sample_map:

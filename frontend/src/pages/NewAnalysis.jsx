@@ -4,11 +4,42 @@ import { PcapUpload } from '../components/upload/PcapUpload';
 import HowItWorks from '../components/HowItWorks';
 import { uploadPcap, loadDemo, getDemoSamples } from '../utils/api';
 
+const DEFAULT_SAMPLES = [
+  {
+    id: "vulnerable_smtp",
+    name: "Vulnerable SMTP Infrastructure",
+    description: "Cleartext port 25 transmission with missing STARTTLS and exposed email payloads.",
+    file: "smtp.pcap",
+    expected_risk: "HIGH / CRITICAL (55/100)"
+  },
+  {
+    id: "legacy_ssl3",
+    name: "Legacy SSL 3.0 Handshake (POODLE Target)",
+    description: "Outdated cryptographic handshake using deprecated SSL 3.0 protocol.",
+    file: "rsasnakeoil2.cap",
+    expected_risk: "CRITICAL / DEPRECATED"
+  },
+  {
+    id: "secure_enterprise",
+    name: "Compliant Enterprise Posture (SMTPS + IMAPS)",
+    description: "100% encrypted email transport using modern TLS 1.2/1.3 and AEAD cipher suites.",
+    file: "secure_mail.pcap",
+    expected_risk: "CLEAN / LOW (0/100)"
+  },
+  {
+    id: "sih_comprehensive",
+    name: "Comprehensive SIH Demo (Multi-Protocol)",
+    description: "Multi-protocol email capture across SMTP, IMAP, and POP3 with TLS 1.2 and plaintext traffic.",
+    file: "SecureMailScope_SIHDemo.pcap",
+    expected_risk: "MEDIUM (37/100)"
+  }
+];
+
 export function NewAnalysis() {
   const navigate = useNavigate();
   const location = useLocation();
   const [demoLoading, setDemoLoading] = useState(null);
-  const [samples, setSamples] = useState([]);
+  const [samples, setSamples] = useState(DEFAULT_SAMPLES);
 
   useEffect(() => {
     if (location.hash === '#how-it-works') {
@@ -24,30 +55,27 @@ export function NewAnalysis() {
   useEffect(() => {
     getDemoSamples()
       .then(res => {
-        if (res && res.samples) {
-          setSamples(res.samples);
+        if (res && res.samples && res.samples.length > 0) {
+          const map = new Map();
+          DEFAULT_SAMPLES.forEach(s => map.set(s.id, s));
+          res.samples.forEach(s => map.set(s.id, s));
+          setSamples(Array.from(map.values()));
         }
       })
       .catch(err => {
         console.error('Failed to load demo samples:', err);
-        setSamples([
-          {
-            id: "vulnerable_smtp",
-            name: "Vulnerable SMTP Infrastructure",
-            description: "SMTP capture showing plaintext transmission and missing authentication security layers.",
-            file: "smtp.pcap",
-            expected_risk: "HIGH"
-          },
-          {
-            id: "legacy_ssl3",
-            name: "Legacy SSL 3.0 Handshake",
-            description: "SSL 3.0 legacy protocol negotiation, exhibiting vulnerability to the POODLE exploit vector.",
-            file: "rsasnakeoil2.cap",
-            expected_risk: "CRITICAL"
-          }
-        ]);
+        setSamples(DEFAULT_SAMPLES);
       });
   }, []);
+
+  // Guarantee all 4 preset options are always present in the rendered list
+  const displaySamples = DEFAULT_SAMPLES.map(def => {
+    return samples.find(s => s.id === def.id) || def;
+  });
+
+  // Debug: Log the number of samples
+  console.log('[NewAnalysis] Rendering Quick Demo Presets:', displaySamples.length, 'samples');
+  console.log('[NewAnalysis] Sample IDs:', displaySamples.map(s => s.id));
 
   const handleLoadDemo = async (sampleId) => {
     try {
@@ -132,7 +160,7 @@ export function NewAnalysis() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {samples.map((sample) => {
+                {displaySamples.map((sample) => {
                   const isCritical = sample.expected_risk === 'CRITICAL';
                   const bg = isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)';
                   const border = isCritical ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)';

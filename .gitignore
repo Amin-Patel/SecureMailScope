@@ -33,10 +33,13 @@ dataset/
 test/
 test_output.txt
 
-# PCAP captures
+# PCAP captures (exclude uploads, but allow demo files in test-data)
 *.pcap
 *.pcapng
 *.cap
+!backend/test-data/*.pcap
+!backend/test-data/*.pcapng
+!backend/test-data/*.cap
 
 # Frontend
 frontend/node_modules/
