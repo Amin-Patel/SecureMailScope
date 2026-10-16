@@ -74,8 +74,8 @@ class TSharkHelper:
             '-e', 'ip.dst',
             '-e', 'tcp.srcport',
             '-e', 'tcp.dstport',
-            '-e', 'ssl.record.version',
-            '-e', 'tls.record.version',
+            '-e', 'ssl.handshake.version',
+            '-e', 'tls.handshake.version',
             '-e', 'ssl.handshake.type',
             '-e', 'tls.handshake.type',
             '-e', 'ssl.handshake.ciphersuite',
@@ -107,8 +107,8 @@ class TSharkHelper:
                 
                 # Extract TLS version (try both ssl and tls namespace)
                 tls_version_raw = (
-                    layers.get('ssl.record.version', [''])[0] or
-                    layers.get('tls.record.version', [''])[0]
+                    layers.get('ssl.handshake.version', [''])[0] or
+                    layers.get('tls.handshake.version', [''])[0]
                 )
                 
                 # Map version codes

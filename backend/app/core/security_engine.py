@@ -9,6 +9,15 @@ from typing import List, Dict
 # Known weak cipher suite keywords
 WEAK_CIPHERS = ['RC4', 'DES', '3DES', 'NULL', 'EXPORT', 'anon', 'MD5']
 
+# Weak cipher hex codes (IANA TLS Cipher Suite Registry) - UPPERCASE for matching
+WEAK_CIPHER_CODES = {
+    '0X0000', '0X0001', '0X0002', '0X0003', '0X0004', '0X0005',  # NULL, RC4, RC2
+    '0X0006', '0X0007', '0X0008', '0X0009', '0X000A', '0X000B',  # DES, 3DES
+    '0X000C', '0X000D', '0X000E', '0X000F', '0X0010', '0X0011',  # 3DES variants
+    '0X0012', '0X0013', '0X0014', '0X0015', '0X0016', '0X0017',  # DES/export
+    '0X0018', '0X0019', '0X001A', '0X001B',  # anon DH
+}
+
 # Known weak signature algorithms
 WEAK_SIG_ALGOS = ['md5', 'sha1', 'md2']
 
@@ -178,9 +187,14 @@ class SecurityEngine:
         for hs in handshakes:
             for cipher in hs.get('cipher_suites', []):
                 cipher_upper = cipher.upper()
-                for weak in WEAK_CIPHERS:
-                    if weak.upper() in cipher_upper:
-                        weak_found.add(cipher)
+                
+                # Check both hex codes and string names
+                if cipher_upper in WEAK_CIPHER_CODES:
+                    weak_found.add(cipher)
+                else:
+                    for weak in WEAK_CIPHERS:
+                        if weak.upper() in cipher_upper:
+                            weak_found.add(cipher)
 
         if weak_found:
             self._add_finding(
