@@ -94,23 +94,6 @@ export async function getAnalysisResults(captureId) {
 }
 
 /**
- * Get the current processing status for a capture.
- * @param {string} captureId The capture identifier.
- * @returns {Promise<Object>} Backend status payload.
- */
-export async function getAnalysisStatus(captureId) {
-  try {
-    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/status`);
-    return response.data;
-  } catch (err) {
-    const msg = parseError(err);
-    const error = new Error(msg);
-    error.original = err;
-    throw error;
-  }
-}
-
-/**
  * Retrieve all completed analyses for current authenticated user.
  * @returns {Promise<Object>} Object containing analyses list and total count.
  */
@@ -154,22 +137,6 @@ export async function getWatchStatus() {
   }
 }
 
-/**
- * Trigger the analysis of a demo/sample PCAP file on the server.
- * @param {string} demoName The filename of the demo PCAP (e.g. smtp.pcap or rsasnakeoil2.cap).
- * @returns {Promise<Object>} The complete analysis payload.
- */
-export async function uploadDemo(demoName) {
-  try {
-    const response = await apiClient.post(`/upload-demo?demo_name=${encodeURIComponent(demoName)}`);
-    return response.data;
-  } catch (err) {
-    const msg = parseError(err);
-    const error = new Error(msg);
-    error.original = err;
-    throw error;
-  }
-}
 
 // Backward‑compatible aliases used by existing components.
 export const uploadPcap = uploadPCAP;
