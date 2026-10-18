@@ -6,6 +6,7 @@ through deterministic analysis rules and baselines to final security findings.
 """
 
 import os
+import re
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
@@ -120,6 +121,13 @@ class ProvenanceGraphBuilder:
                 'is_direct': is_direct,
                 'metadata': metadata or {}
             })
+
+    @staticmethod
+    def _extract_cn(subject: str) -> str:
+        """Pull the Common Name out of a distinguished name, or '' if absent."""
+        if subject and 'CN=' in subject:
+            return subject.split('CN=')[-1].split(',')[0].strip()
+        return ''
 
     def _compute_file_hash(self, filename: str) -> Dict[str, Any]:
         """Attempt to locate capture file and compute real SHA-256 hash."""
@@ -386,7 +394,10 @@ class ProvenanceGraphBuilder:
         # ── 5. CERTIFICATE NODES ──
         cert_map = {}
         for i, cert in enumerate(certificates):
-            c_frame = cert.get('frame', i + 1)
+            # The analysis pipeline emits certificates with 'frame_number'; accept
+            # either key so provenance nodes cite the real capture frame rather
+            # than falling back to the list index.
+            c_frame = cert.get('frame') or cert.get('frame_number') or (i + 1)
             c_id = f"cert:frame_{c_frame}_{i}"
             cert_map[i] = c_id
 
@@ -598,6 +609,58 @@ class ProvenanceGraphBuilder:
                             self._add_edge(c_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
                             self._add_edge(c_node, finding_node_id, 'SUPPORTS_FINDING', 'violates PKI policy', is_direct=True)
                             evidence_linked_for_this_finding.append(c_node)
+
+            elif f_type == 'certificate_pki':
+                # The analysis pipeline consolidates per-certificate PKI findings
+                # (expiry, not-yet-valid, self-signed, untrusted chain) under one
+                # type and names the certificate in the title/evidence. Resolve
+                # the exact certificate by cited frame number, else by subject CN.
+                text = f"{finding.get('title', '')} {finding.get('evidence', '')}"
+                cited_frames = {int(m) for m in re.findall(r'[Ff]rame\s+(\d+)', text)}
+                matched_indices = [
+                    i for i, cert in enumerate(certificates)
+                    if (cert.get('frame') or cert.get('frame_number')) in cited_frames
+                ]
+                if not matched_indices:
+                    # The cited frame may be a re-presentation of an already
+                    # de-duplicated certificate; fall back to the subject CN.
+                    matched_indices = [
+                        i for i, cert in enumerate(certificates)
+                        if self._extract_cn(cert.get('subject', ''))
+                        and self._extract_cn(cert.get('subject', '')) in text
+                    ]
+                for i in matched_indices:
+                    c_node = cert_map.get(i)
+                    if c_node:
+                        self._add_edge(c_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                        self._add_edge(c_node, finding_node_id, 'SUPPORTS_FINDING', 'violates PKI policy', is_direct=True)
+                        evidence_linked_for_this_finding.append(c_node)
+
+            elif f_type == 'no_forward_secrecy':
+                # Link the handshakes whose negotiated key exchange is static
+                # (no ECDHE/DHE), which is what the finding is asserting.
+                for i, hs in enumerate(handshakes):
+                    names = ' '.join(str(c) for c in hs.get('cipher_suites', [])).upper()
+                    if names and 'DHE' not in names:
+                        hs_node = handshake_map.get(hs.get('frame', i + 1))
+                        if hs_node:
+                            self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                            self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'static key exchange, no forward secrecy', is_direct=True)
+                            evidence_linked_for_this_finding.append(hs_node)
+
+            elif f_type in ['email_authentication', 'missing_dkim', 'missing_spf', 'missing_dmarc']:
+                # Email-authentication findings cite the stream each message was
+                # observed on; sessions are keyed by that same stream id.
+                cited_streams = set(re.findall(r'stream\s+(\w+)', str(finding.get('evidence', '')), re.IGNORECASE))
+                for s in sessions:
+                    # Sessions carry the TCP stream id the finding cites, which is
+                    # distinct from the session's own id.
+                    if {str(s.get('stream_id')), str(s.get('id'))} & cited_streams:
+                        s_node = session_map.get(s.get('id'))
+                        if s_node:
+                            self._add_edge(s_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                            self._add_edge(s_node, finding_node_id, 'SUPPORTS_FINDING', 'carries the assessed message', is_direct=True)
+                            evidence_linked_for_this_finding.append(s_node)
 
             # Record in traceability index
             if evidence_linked_for_this_finding:

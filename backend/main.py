@@ -7,6 +7,7 @@ Path Traversal Prevention, Upload Validation, and Credential Redaction.
 
 import os
 import json
+import sys
 import uuid
 import re
 import shutil
@@ -23,8 +24,19 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+# Ensure UTF-8 console output on Windows to prevent UnicodeEncodeError (ported from Amin)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Import analysis pipeline & reporting engine
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
+from app.core.crypto_state_engine import CryptographicStateEngine
+from app.core.evidence_assessment_engine import EvidenceAssessmentEngine
+from app.services.provenance_service import ProvenanceGraphBuilder
 from app.services.report_generator import ReportGenerator
 from app.core.auth import get_current_user, get_optional_user, require_admin_role
 from app.services.knowledge_base import get_knowledge_base
@@ -76,7 +88,7 @@ app.add_middleware(
 )
 
 # ─── DIRECTORIES ───
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 RESULTS_DIR = BASE_DIR / "results"
 TEST_DATA_DIR = BASE_DIR / "test-data"
@@ -223,6 +235,15 @@ async def list_demo_samples(request: Request):
             "description": "100% encrypted email transport using modern TLS 1.2/1.3 and AEAD cipher suites.",
             "file": "secure_mail.pcap",
             "expected_risk": "CLEAN / LOW (0/100)"
+        },
+        {
+            "id": "sih_comprehensive",
+            "name": "Comprehensive SIH Demo (Multi-Protocol)",
+            # Metadata below is measured against this capture on this branch, not
+            # carried forward from an earlier state (F40).
+            "description": "Multi-protocol email capture across SMTP, SMTP-Submission, SMTP-Alt, POP3 and IMAP, mixing SSL 3.0 and TLS 1.2 handshakes with cleartext traffic and four X.509 certificates.",
+            "file": "SecureMailScope_SIHDemo.pcap",
+            "expected_risk": "CRITICAL (100/100, grade F)"
         }
     ]
     return {"samples": samples}
@@ -239,7 +260,8 @@ async def load_demo_sample(
     sample_map = {
         "vulnerable_smtp": "smtp.pcap",
         "legacy_ssl3": "rsasnakeoil2.cap",
-        "secure_enterprise": "secure_mail.pcap"
+        "secure_enterprise": "secure_mail.pcap",
+        "sih_comprehensive": "SecureMailScope_SIHDemo.pcap"
     }
 
     if sample_id not in sample_map:
@@ -279,7 +301,80 @@ async def get_results(
         data = json.load(f)
 
     check_resource_ownership(data, optional_user, allow_public_demo=True)
+
+    # Back-fill the two assessments for results stored before they existed.
+    # Derived in memory only — a GET must never rewrite the stored artefact (F46).
+    if not data.get("cryptographic_state_assessment") or not data.get("evidence_based_assessment"):
+        attach_assessments(data)
+
     return JSONResponse(content=data)
+
+
+# ─── 4B. EVIDENCE PROVENANCE GRAPH ───
+def _load_owned_result(capture_id: str, user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resolve a capture_id to its stored result, enforcing the same path-traversal
+    sanitisation and ownership checks as every other analysis endpoint."""
+    cid = sanitize_capture_id(capture_id)
+    results_file = RESULTS_DIR / f"{cid}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {cid}")
+    with open(results_file, "r") as f:
+        data = json.load(f)
+    check_resource_ownership(data, user, allow_public_demo=True)
+    return data
+
+
+@app.get("/api/analysis/{capture_id}/provenance")
+@limiter.limit("60/minute")
+async def get_provenance_graph(
+    request: Request,
+    capture_id: str,
+    optional_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
+    """Evidence Provenance Graph: bidirectional traceability from the capture
+    artifact and packets, through sessions, handshakes, certificates and analysis
+    rules, to the security findings."""
+    data = _load_owned_result(capture_id, optional_user)
+    try:
+        return JSONResponse(content=ProvenanceGraphBuilder(data).build())
+    except Exception as e:
+        print(f"[!] Provenance graph build failed for {capture_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate provenance graph.")
+
+
+@app.get("/api/analysis/{capture_id}/provenance/node/{node_id}")
+@limiter.limit("120/minute")
+async def get_provenance_node_detail(
+    request: Request,
+    capture_id: str,
+    node_id: str,
+    optional_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
+    """Forensic detail for one provenance entity: its incoming and outgoing
+    relationships, upstream evidence and downstream findings."""
+    data = _load_owned_result(capture_id, optional_user)
+    try:
+        graph = ProvenanceGraphBuilder(data).build()
+    except Exception as e:
+        print(f"[!] Provenance graph build failed for {capture_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve entity details.")
+
+    node = next((n for n in graph["nodes"] if n["id"] == node_id), None)
+    if not node:
+        raise HTTPException(status_code=404, detail="Entity not found in this analysis.")
+
+    index = graph.get("traceability_index", {})
+    return JSONResponse(content={
+        "node": node,
+        "incoming_relationships": [e for e in graph["edges"] if e["target"] == node_id],
+        "outgoing_relationships": [e for e in graph["edges"] if e["source"] == node_id],
+        "traceability": {
+            "upstream_evidence": index.get("finding_to_evidence", {}).get(
+                node_id.replace("finding:", ""), []
+            ),
+            "downstream_findings": index.get("evidence_to_findings", {}).get(node_id, []),
+        },
+    })
 
 
 # ─── 5. FORENSIC REPORT GENERATION ───
@@ -585,6 +680,29 @@ async def delete_kb_article(
 
 # ─── HELPER PIPELINE FUNCTION ───
 
+def attach_assessments(result: Dict[str, Any]) -> None:
+    """Run the passive cryptographic-state and evidence-assessment engines over a
+    completed analysis and attach their output in place.
+
+    Called once, at analysis time, so the stored result JSON is complete and the
+    read endpoints never have to write to the forensic artefact (F46).
+    Both engines are stdlib-only and derive purely from `result`."""
+    try:
+        assessment = CryptographicStateEngine(result).evaluate()
+        result["cryptographic_state_assessment"] = assessment
+        summary = result.get("summary")
+        if isinstance(summary, dict):
+            summary["cryptographic_state"] = assessment["overall_state"]
+            summary["cryptographic_state_label"] = assessment["overall_state_label"]
+    except Exception as e:
+        print(f"[!] Cryptographic state assessment failed: {e}")
+
+    try:
+        result["evidence_based_assessment"] = EvidenceAssessmentEngine(result).evaluate()
+    except Exception as e:
+        print(f"[!] Evidence-based assessment failed: {e}")
+
+
 def analyze_and_store(
     file_path: Path,
     original_filename: str,
@@ -606,6 +724,8 @@ def analyze_and_store(
     result["original_filename"] = original_filename
     result["file_size"] = file_size
     result["status"] = "completed"
+
+    attach_assessments(result)
 
     results_file = RESULTS_DIR / f"{capture_id}.json"
     with open(results_file, "w") as f:

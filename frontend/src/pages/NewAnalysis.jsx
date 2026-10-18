@@ -44,6 +44,14 @@ export function NewAnalysis() {
             description: "SSL 3.0 legacy protocol negotiation, exhibiting vulnerability to the POODLE exploit vector.",
             file: "rsasnakeoil2.cap",
             expected_risk: "CRITICAL"
+          },
+          {
+            id: "sih_comprehensive",
+            name: "Comprehensive SIH Demo (Multi-Protocol)",
+            // Measured on this branch, not carried forward (F40).
+            description: "Multi-protocol email capture across SMTP, SMTP-Submission, SMTP-Alt, POP3 and IMAP, mixing SSL 3.0 and TLS 1.2 handshakes with cleartext traffic and four X.509 certificates.",
+            file: "SecureMailScope_SIHDemo.pcap",
+            expected_risk: "CRITICAL"
           }
         ]);
       });
