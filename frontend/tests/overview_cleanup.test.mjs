@@ -2,8 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const analysisFilePath = path.resolve('frontend/src/pages/Analysis.jsx');
+// Anchor to this file, not to the caller's cwd (F48).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '../..');
+
+const analysisFilePath = path.resolve(projectRoot, 'frontend/src/pages/Analysis.jsx');
 const analysisContent = fs.readFileSync(analysisFilePath, 'utf-8');
 
 test('Test 1: Overview section does not contain duplicate embedded EvidenceBasedAssessment', () => {

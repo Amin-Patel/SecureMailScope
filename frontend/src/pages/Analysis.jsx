@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { getAnalysis, getAnalyses, getStreamDetails } from '../utils/api';
+import { getAnalysis, getAnalyses, getStreamDetails, getProvenanceGraph } from '../utils/api';
 import { AIExplanation } from '../components/AIExplanation';
 import { StreamViewerModal } from '../components/StreamViewerModal';
 import { CertChainTree } from '../components/CertChainTree';
+import { ProvenanceGraph } from '../components/ProvenanceGraph';
+import { CryptographicStateAssessment } from '../components/CryptographicStateAssessment';
+import { EvidenceBasedAssessment } from '../components/EvidenceBasedAssessment';
 
 // ── Toast notification ────────────────────────────────────────────────────────
 function Toast({ toasts, remove }) {
@@ -85,6 +88,10 @@ export function Analysis() {
   const [activeStream, setActiveStream] = useState(null);
   const [loadingStream, setLoadingStream] = useState(false);
 
+  const [provenanceData, setProvenanceData] = useState(null);
+  const [provenanceLoading, setProvenanceLoading] = useState(false);
+  const [highlightedFindingId, setHighlightedFindingId] = useState(null);
+
   // ── Toast helper ────────────────────────────────────────────────────────────
   const addToast = useCallback((message, type = 'success') => {
     const id = Date.now();
@@ -114,6 +121,23 @@ export function Analysis() {
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam);
   }, [tabParam]);
+
+  // Load provenance graph on-demand when Evidence Graph tab is activated
+  useEffect(() => {
+    const targetId = analysisData?.capture_id || jobId;
+    if (activeTab === 'evidence' && targetId && (!provenanceData || provenanceData.capture_id !== targetId)) {
+      setProvenanceLoading(true);
+      getProvenanceGraph(targetId)
+        .then(data => {
+          setProvenanceData(data);
+          setProvenanceLoading(false);
+        })
+        .catch(err => {
+          console.error('Failed to load provenance for analysis view:', err);
+          setProvenanceLoading(false);
+        });
+    }
+  }, [activeTab, analysisData, jobId, provenanceData]);
 
   useEffect(() => {
     setLoading(true);
@@ -312,45 +336,195 @@ export function Analysis() {
             Analysis Workspace &bull; Job ID #{currentCaptureId} &bull; Risk Score {score}/100
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '15px',
-            fontWeight: 800,
-            background: `rgba(${riskColor === '#ef4444' ? '239,68,68' : riskColor === '#f59e0b' ? '245,158,11' : '16,185,129'}, 0.15)`,
-            border: `2px solid ${riskColor}`,
-            boxShadow: `0 0 12px ${riskColor}44`,
-            color: '#ffffff',
-          }}>
-            {score}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '15px',
+              fontWeight: 800,
+              background: `rgba(${riskColor === '#ef4444' ? '239,68,68' : riskColor === '#f59e0b' ? '245,158,11' : '16,185,129'}, 0.15)`,
+              border: `2px solid ${riskColor}`,
+              boxShadow: `0 0 12px ${riskColor}44`,
+              color: '#ffffff',
+            }}>
+              {score}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', lineHeight: 1.2 }}>
+                Risk Score
+              </span>
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+                out of 100
+              </span>
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', lineHeight: 1.2 }}>
-              Risk Score
-            </span>
-            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
-              out of 100
-            </span>
-          </div>
+
+          {/* Cryptographic State Badge (USP 2) */}
+          {analysisData?.cryptographic_state_assessment && (
+            <button
+              onClick={() => setActiveTab('crypto')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '999px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: `1.5px solid ${analysisData.cryptographic_state_assessment.badge_color || '#818cf8'}`,
+                color: '#ffffff',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: `0 0 12px ${analysisData.cryptographic_state_assessment.badge_color || '#818cf8'}33`
+              }}
+              title="Click to view Cryptographic State Reasoning"
+            >
+              <i className="fa-solid fa-shield-halved" style={{ color: analysisData.cryptographic_state_assessment.badge_color || '#818cf8' }} />
+              <span>{analysisData.cryptographic_state_assessment.overall_state_label}</span>
+            </button>
+          )}
+
+          {/* Evidence-Based Assessment Badge (USP 5) */}
+          {analysisData?.evidence_based_assessment && (
+            <button
+              onClick={() => setActiveTab('evidence_assessment')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '999px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              title="Click to view Evidence-Based Assessment (Observed / Expected / Unknown)"
+            >
+              <i className="fa-solid fa-scale-balanced" style={{ color: '#cbd5e1' }} />
+              <span>Assessment: {analysisData.evidence_based_assessment.metrics?.satisfied_count || 0} Satisfied &bull; {analysisData.evidence_based_assessment.metrics?.violated_count || 0} Violated</span>
+            </button>
+          )}
+
+          {/* View Evidence Provenance Graph Button */}
+          <Link
+            to={`/provenance?job=${encodeURIComponent(currentCaptureId)}`}
+            className="btn-action btn-secondary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              fontSize: '12px',
+              fontWeight: 600,
+              textDecoration: 'none',
+              transition: 'all 0.2s ease',
+            }}
+            title={`View Evidence Provenance Graph for ${currentCaptureId}`}
+          >
+            <i className="fa-solid fa-diagram-project" />
+            <span>View Evidence Provenance Graph</span>
+          </Link>
         </div>
       </div>
 
       {/* Tab Bar */}
-      <nav className="tabs-bar">
-        {['overview', 'findings', 'sessions', 'certificates', 'remediation', 'report'].map(tab => (
-          <button
-            key={tab}
-            className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === 'certificates' ? 'Certificates & PKI' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
+      <nav className="tabs-bar" aria-label="Analysis Tabs Navigation">
+        {[
+          { id: 'overview', label: 'Overview', icon: 'fa-solid fa-gauge-high' },
+          {
+            id: 'evidence_assessment',
+            label: 'Evidence-Based Assessment',
+            icon: 'fa-solid fa-scale-balanced',
+            badge: analysisData?.evidence_based_assessment?.metrics?.total_assessed != null
+              ? `${analysisData.evidence_based_assessment.metrics.satisfied_count ?? 0}/${analysisData.evidence_based_assessment.metrics.total_assessed}`
+              : null,
+            badgeBg: 'rgba(56, 189, 248, 0.25)',
+            badgeBorder: 'rgba(56, 189, 248, 0.5)',
+            badgeColor: '#38bdf8'
+          },
+          {
+            id: 'crypto',
+            label: 'Cryptographic State',
+            icon: 'fa-solid fa-shield-halved',
+            badge: analysisData?.cryptographic_state_assessment?.overall_state_label || null,
+            badgeBg: `${analysisData?.cryptographic_state_assessment?.badge_color || '#818cf8'}26`,
+            badgeBorder: `${analysisData?.cryptographic_state_assessment?.badge_color || '#818cf8'}66`,
+            badgeColor: analysisData?.cryptographic_state_assessment?.badge_color || '#c7d2fe'
+          },
+          {
+            id: 'findings',
+            label: 'Findings',
+            icon: 'fa-solid fa-triangle-exclamation',
+            badge: rawFindings.length > 0 ? rawFindings.length : null,
+            badgeBg: criticalCount > 0 ? 'rgba(239, 68, 68, 0.25)' : highCount > 0 ? 'rgba(249, 115, 22, 0.25)' : 'rgba(99, 102, 241, 0.2)',
+            badgeBorder: criticalCount > 0 ? 'rgba(239, 68, 68, 0.5)' : highCount > 0 ? 'rgba(249, 115, 22, 0.5)' : 'rgba(99, 102, 241, 0.4)',
+            badgeColor: criticalCount > 0 ? '#f87171' : highCount > 0 ? '#fb923c' : '#c7d2fe'
+          },
+          {
+            id: 'sessions',
+            label: 'Sessions',
+            icon: 'fa-solid fa-network-wired',
+            badge: (summary.session_count ?? sessions.length) > 0 ? (summary.session_count ?? sessions.length) : null,
+            badgeBg: 'rgba(16, 185, 129, 0.2)',
+            badgeBorder: 'rgba(16, 185, 129, 0.4)',
+            badgeColor: '#34d399'
+          },
+          {
+            id: 'certificates',
+            label: 'Certificates & PKI',
+            icon: 'fa-solid fa-certificate',
+            badge: (summary.certificate_count ?? 0) > 0 ? summary.certificate_count : null,
+            badgeBg: 'rgba(168, 85, 247, 0.2)',
+            badgeBorder: 'rgba(168, 85, 247, 0.4)',
+            badgeColor: '#c084fc'
+          },
+          { id: 'evidence', label: 'Evidence Graph', icon: 'fa-solid fa-diagram-project' },
+          { id: 'remediation', label: 'Remediation', icon: 'fa-solid fa-list-check' },
+          { id: 'report', label: 'Report', icon: 'fa-solid fa-file-lines' },
+        ].map(tab => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              className={`tab-btn ${isActive ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              aria-selected={isActive}
+              role="tab"
+            >
+              <i
+                className={tab.icon}
+                style={{
+                  fontSize: '13px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  transition: 'color 0.2s ease',
+                }}
+              />
+              <span>{tab.label}</span>
+              {tab.badge && (
+                <span
+                  className="tab-badge"
+                  style={{
+                    background: tab.badgeBg || 'rgba(255, 255, 255, 0.1)',
+                    borderColor: tab.badgeBorder || 'rgba(255, 255, 255, 0.2)',
+                    color: tab.badgeColor || '#ffffff',
+                  }}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       {/* ── Overview ── */}
@@ -366,7 +540,44 @@ export function Analysis() {
               <div className="metric-box"><div className="metric-value">{rawFindings.length}</div><div className="metric-label">Findings</div></div>
               <div className="metric-box"><div className="metric-value">{summary.session_count ?? sessions.length}</div><div className="metric-label">Sessions</div></div>
             </div>
+            <div style={{ marginTop: '16px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <Link
+                to={`/provenance?job=${encodeURIComponent(currentCaptureId)}`}
+                className="btn-action"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  borderRadius: '999px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                <i className="fa-solid fa-diagram-project" />
+                <span>View Evidence Provenance Graph</span>
+              </Link>
+              <button
+                className="btn-action btn-secondary"
+                onClick={() => setActiveTab('evidence')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  borderRadius: '999px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <i className="fa-solid fa-network-wired" />
+                <span>Open In-Page Graph Tab</span>
+              </button>
+            </div>
           </div>
+
           <div className="glass-card">
             <h3 className="drawer-section-title" style={{ marginBottom: 12 }}>Security Findings Distribution</h3>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -380,9 +591,51 @@ export function Analysis() {
         </section>
       )}
 
+      {/* ── Evidence-Based Assessment Tab (USP 5) ── */}
+      {activeTab === 'evidence_assessment' && (
+        <section className="tab-content active">
+          <EvidenceBasedAssessment
+            assessment={analysisData?.evidence_based_assessment}
+            captureId={currentCaptureId}
+          />
+        </section>
+      )}
+
+      {/* ── Cryptographic State Reasoning Tab (USP 2) ── */}
+      {activeTab === 'crypto' && (
+        <section className="tab-content active">
+          <CryptographicStateAssessment
+            assessment={analysisData?.cryptographic_state_assessment}
+            captureId={currentCaptureId}
+          />
+        </section>
+      )}
+
       {/* ── Findings ── */}
       {activeTab === 'findings' && (
         <section className="tab-content active">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+            <div style={{ fontSize: '13px', color: '#cbd5e1' }}>
+              Displaying <strong>{filteredFindings.length}</strong> forensic security findings
+            </div>
+            <Link
+              to={`/provenance?job=${encodeURIComponent(currentCaptureId)}`}
+              className="btn-action btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '7px 16px',
+                borderRadius: '999px',
+                fontSize: '12px',
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <i className="fa-solid fa-diagram-project" />
+              <span>View Evidence Provenance Graph</span>
+            </Link>
+          </div>
           <div className="filters-row">
             <input type="text" className="search-input" placeholder="Search findings by title, IP, host…"
               value={findingsSearch} onChange={e => setFindingsSearch(e.target.value)} />
@@ -396,10 +649,10 @@ export function Analysis() {
           </div>
           <div className="data-table-wrapper">
             <table className="data-table">
-              <thead><tr><th>ID</th><th>Severity</th><th>Finding Title</th><th>Category</th><th>Evidence Snippet</th></tr></thead>
+              <thead><tr><th>ID</th><th>Severity</th><th>Finding Title</th><th>Category</th><th>Evidence Snippet</th><th>Provenance</th></tr></thead>
               <tbody>
                 {filteredFindings.length === 0
-                  ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No findings match your filter</td></tr>
+                  ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No findings match your filter</td></tr>
                   : filteredFindings.map(f => {
                     const sevLower = (f.severity || '').toLowerCase();
                     const sevLabel = f.severity || 'UNKNOWN';
@@ -411,6 +664,33 @@ export function Analysis() {
                         <td>{f.type || '--'}</td>
                         <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.evidence}>
                           {f.evidence ? f.evidence.split(' ').slice(0, 8).join(' ') + '…' : '--'}
+                        </td>
+                        <td>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTab('evidence');
+                              setHighlightedFindingId(f.id.startsWith('finding:') ? f.id : `finding:${f.id}`);
+                            }}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              background: 'rgba(255, 255, 255, 0.06)',
+                              border: '1px solid rgba(255, 255, 255, 0.12)',
+                              color: '#cbd5e1',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="Inspect in Evidence Provenance Graph"
+                          >
+                            <i className="fa-solid fa-diagram-project" style={{ fontSize: '10px' }} />
+                            <span>Graph</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -435,7 +715,7 @@ export function Analysis() {
           </div>
           <div className="data-table-wrapper">
             <table className="data-table">
-              <thead><tr><th>Session ID</th><th>Source</th><th>Destination</th><th>Protocol</th><th>TLS Version</th><th>Security Status</th><th>Action</th></tr></thead>
+              <thead><tr><th>Session ID</th><th>Source</th><th>Destination</th><th>Protocol</th><th>TLS Version</th><th>Security Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {filteredSessions.length === 0 ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No sessions captured or matching filter</td></tr>
@@ -457,7 +737,7 @@ export function Analysis() {
                             ? <span className="badge badge-low" style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>Secure</span>
                             : <span className="badge badge-critical">{statusLabel}</span>}
                         </td>
-                        <td>
+                        <td style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <button
                             onClick={(e) => handleFollowStream(s, e)}
                             style={{
@@ -477,6 +757,31 @@ export function Analysis() {
                             title="Follow reconstructed TCP conversation stream"
                           >
                             <i className="fa-solid fa-water" /> Follow Stream
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTab('evidence');
+                              setHighlightedFindingId(s.id.startsWith('session:') ? s.id : `session:${s.id}`);
+                            }}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              background: 'rgba(255, 255, 255, 0.06)',
+                              border: '1px solid rgba(255, 255, 255, 0.12)',
+                              color: '#cbd5e1',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="Inspect session stream in Evidence Provenance Graph"
+                          >
+                            <i className="fa-solid fa-diagram-project" style={{ fontSize: '10px' }} />
+                            <span>Graph</span>
                           </button>
                         </td>
                       </tr>
@@ -528,6 +833,48 @@ export function Analysis() {
               )}
             </div>
           </div>
+        </section>
+      )}
+
+      {/* ── Evidence Graph ── */}
+      {activeTab === 'evidence' && (
+        <section className="tab-content active" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                Evidence Provenance Graph for Capture #{currentCaptureId}
+              </h3>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', margin: '4px 0 0 0' }}>
+                Interactive causal graph tracing raw network evidence, TLS handshakes, and X.509 certificates directly to security findings.
+              </p>
+            </div>
+            <Link
+              to={`/provenance?job=${encodeURIComponent(currentCaptureId)}${highlightedFindingId ? `&node=${encodeURIComponent(highlightedFindingId)}` : ''}`}
+              className="btn-action"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
+            >
+              <i className="fa-solid fa-up-right-and-down-left-from-center" />
+              <span>Full Screen Graph</span>
+            </Link>
+          </div>
+
+          {provenanceLoading ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8', background: 'rgba(15,23,42,0.6)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <i className="fa-solid fa-circle-notch fa-spin" style={{ fontSize: '32px', color: '#818cf8', marginBottom: '14px' }} />
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#ffffff' }}>Constructing Evidence Provenance Graph…</div>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>Tracing packets, sessions, handshakes, certificates, and analysis rules.</p>
+            </div>
+          ) : provenanceData ? (
+            <ProvenanceGraph
+              graphData={provenanceData}
+              initialFocusId={highlightedFindingId}
+              height="650px"
+            />
+          ) : (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', background: 'rgba(15,23,42,0.6)', borderRadius: '12px' }}>
+              No provenance data available for this capture.
+            </div>
+          )}
         </section>
       )}
 
@@ -598,6 +945,54 @@ export function Analysis() {
               <div><div className="drawer-section-title">Evidence (Packet Reconstruct)</div><div className="code-block">{selectedFinding.evidence || 'No evidence data.'}</div></div>
               {/* backend: f.remediation (not f.reco) */}
               <div><div className="drawer-section-title">Recommendation</div><p style={{ fontSize: 13, color: '#e4e4e7', lineHeight: 1.5 }}>{selectedFinding.remediation || 'No recommendation available.'}</p></div>
+              {/* Evidence Provenance Graph Action */}
+              <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    setActiveTab('evidence');
+                    setHighlightedFindingId(selectedFinding.id);
+                    closeDrawer();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(99, 102, 241, 0.2)',
+                    border: '1.5px solid rgba(168, 85, 247, 0.5)',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 16px rgba(168, 85, 247, 0.2)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <i className="fa-solid fa-diagram-project" style={{ color: '#c084fc' }} />
+                  <span>View in In-Page Graph</span>
+                </button>
+                <Link
+                  to={`/provenance?job=${encodeURIComponent(currentCaptureId)}&node=${encodeURIComponent(selectedFinding.id)}`}
+                  className="btn-action btn-secondary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    textDecoration: 'none',
+                    fontSize: '12px',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <i className="fa-solid fa-up-right-from-square" />
+                  <span>Full Screen Provenance Graph</span>
+                </Link>
+              </div>
+
               <AIExplanation finding={selectedFinding} />
             </div>
           );
@@ -639,6 +1034,54 @@ export function Analysis() {
               {sessionSubTab === 'info' && <div className="sub-tab-content active"><div className="drawer-section-title">Session Assessment</div><p style={{ fontSize: 13, color: '#e4e4e7', lineHeight: 1.5 }}>{assess}</p></div>}
               {sessionSubTab === 'tls'  && <div className="sub-tab-content active"><div className="drawer-section-title">TLS Handshake</div><div className="code-block">{tlsData.tls}</div></div>}
               {sessionSubTab === 'cert' && <div className="sub-tab-content active"><div className="drawer-section-title">Certificate Information</div><div className="code-block">{tlsData.cert}</div></div>}
+
+              {/* Provenance Graph Action for Session */}
+              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    setActiveTab('evidence');
+                    setHighlightedFindingId(selectedSession.id);
+                    closeDrawer();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(99, 102, 241, 0.2)',
+                    border: '1.5px solid rgba(168, 85, 247, 0.5)',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 16px rgba(168, 85, 247, 0.2)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <i className="fa-solid fa-diagram-project" style={{ color: '#c084fc' }} />
+                  <span>Trace Session in In-Page Graph</span>
+                </button>
+                <Link
+                  to={`/provenance?job=${encodeURIComponent(currentCaptureId)}&node=${encodeURIComponent(selectedSession.id)}`}
+                  className="btn-action btn-secondary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    textDecoration: 'none',
+                    fontSize: '12px',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <i className="fa-solid fa-up-right-from-square" />
+                  <span>Full Screen Provenance Graph</span>
+                </Link>
+              </div>
             </div>
           );
         })()}

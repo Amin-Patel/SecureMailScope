@@ -8,5 +8,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: [],
+    // tests/*.test.mjs are node:test source-assertion suites run by
+    // `npm run test:source`; vitest cannot bundle node:test.
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
   },
 })

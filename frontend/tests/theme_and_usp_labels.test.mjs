@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Anchor every path to this file, not to the caller's cwd, so the suite passes
+// from frontend/ as well as from the repository root (F48).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '../..');
 
 function findFiles(dir, filterRegex) {
   let results = [];
@@ -21,7 +27,7 @@ function findFiles(dir, filterRegex) {
 }
 
 test('Part A1 — Zero visible USP labels in frontend components and pages', () => {
-  const srcDir = path.resolve(process.cwd(), 'frontend/src');
+  const srcDir = path.resolve(projectRoot, 'frontend/src');
   const files = findFiles(srcDir, /\.(jsx|js|html)$/);
 
   const visibleUspPattern = />\s*USP\s*\d+\s*<|["']Evidence Assessment \(USP \d+\)["']|["']\s*USP\s*\d+\s*["']/gi;
@@ -54,8 +60,8 @@ test('Part A1 — Zero visible USP labels in frontend components and pages', () 
 });
 
 test('Part A2 — Assessment sections adopt SecureMailScope glass-card theme', () => {
-  const ebaPath = path.resolve(process.cwd(), 'frontend/src/components/EvidenceBasedAssessment.jsx');
-  const csaPath = path.resolve(process.cwd(), 'frontend/src/components/CryptographicStateAssessment.jsx');
+  const ebaPath = path.resolve(projectRoot, 'frontend/src/components/EvidenceBasedAssessment.jsx');
+  const csaPath = path.resolve(projectRoot, 'frontend/src/components/CryptographicStateAssessment.jsx');
 
   const ebaContent = fs.readFileSync(ebaPath, 'utf8');
   const csaContent = fs.readFileSync(csaPath, 'utf8');
@@ -70,9 +76,9 @@ test('Part A2 — Assessment sections adopt SecureMailScope glass-card theme', (
 });
 
 test('Part B — Evidence navigation parameters standardized to &node=', () => {
-  const ebaPath = path.resolve(process.cwd(), 'frontend/src/components/EvidenceBasedAssessment.jsx');
-  const epPath = path.resolve(process.cwd(), 'frontend/src/pages/EvidenceProvenance.jsx');
-  const pgPath = path.resolve(process.cwd(), 'frontend/src/components/ProvenanceGraph.jsx');
+  const ebaPath = path.resolve(projectRoot, 'frontend/src/components/EvidenceBasedAssessment.jsx');
+  const epPath = path.resolve(projectRoot, 'frontend/src/pages/EvidenceProvenance.jsx');
+  const pgPath = path.resolve(projectRoot, 'frontend/src/components/ProvenanceGraph.jsx');
 
   const ebaContent = fs.readFileSync(ebaPath, 'utf8');
   const epContent = fs.readFileSync(epPath, 'utf8');
