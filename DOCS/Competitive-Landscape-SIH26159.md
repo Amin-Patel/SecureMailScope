@@ -31,6 +31,15 @@ and spot-checked source files directly for any feature claimed in a README
   surface-checked before — see the three new Tier 2 items below
   (server-config remediation snippets, per-server behavioral
   fingerprinting, live/continuous monitoring architecture).
+- **2026-09-19**: status update only, no new survey run (the last repo
+  survey was 09-17, which found no competitor pushes since 09-16). Several
+  items below are now **done** on `main`:
+  real PDF export (Tier 1 #3), SPF/DKIM/DMARC (Tier 2 #5, built passive-first
+  with an on-demand lookup), A-F grading (Tier 2 #7) and file-watcher
+  monitoring (Tier 2 #11). Still open: MTA-STS/DANE (#6), evidence-strictness
+  wording (#8), config-snippet remediation (#9), per-server fingerprinting
+  (#10). Current status: [`Feature-Status-and-Backlog.md`](Feature-Status-and-Backlog.md).
+  Commercial products are covered in [`Enterprise-Landscape.md`](Enterprise-Landscape.md).
 
 ---
 
@@ -189,7 +198,7 @@ build here).
    control key logging — noted here in case we want TLS 1.3 cert findings
    to work in a live demo later).
 
-3. **Real PDF export endpoint** — spec explicitly lists PDF as a required
+3. ~~**Real PDF export endpoint**~~ — **done 2026-09-19** (`format=pdf`, xhtml2pdf). Original note: spec explicitly lists PDF as a required
    export format. We currently only have client-side `window.print()`
    ("Print / Save as PDF"), not a server-generated file. Astra-Innovators'
    `pdf_builder.py` and pitu2k's `pdf_report.py` are both small, proven
@@ -198,7 +207,7 @@ build here).
 
 ### Tier 2 — Worth doing, not spec-required but a real differentiator judges would notice
 
-5. **SPF/DKIM/DMARC checking** — three independent teams (fredfe08 in
+5. ~~**SPF/DKIM/DMARC checking**~~ — **done 2026-09-19**, built passive-first (read from the capture) with an on-demand DNS lookup kept separate. Original note: three independent teams (fredfe08 in
    Python, Dikshant0Git in Node.js, both verified as real code) built this.
    It's a whole security dimension (mail spoofing/phishing defense) the
    official spec doesn't ask for but that any judge with real email-security
@@ -212,7 +221,7 @@ build here).
    records already present in the same capture, no live lookup needed) —
    arguably higher-value than item 5 for that reason alone, at similar
    effort.
-7. **A–F / letter-grade posture summary** — cheap, presentation-only layer
+7. ~~**A–F / letter-grade posture summary**~~ — **done 2026-09-19**. Original note: cheap, presentation-only layer
    on top of our existing risk score. Purely a judge-facing legibility
    improvement (MalharBhoi does this well); no new detection logic needed.
 8. **Evidence-strictness language** — fredfe08's `OBSERVED`/`NOT_FOUND`/
@@ -248,7 +257,7 @@ build here).
     TLS 1.2 alone isn't "weak." Requires a persistent per-server profile
     store; we're currently stateless (one PCAP in, one report out), so
     this is a real architectural change, not a feature bolt-on.
-11. **Live/continuous monitoring, not just batch upload** (also a bigger
+11. ~~**Live/continuous monitoring, not just batch upload**~~ — **done 2026-09-19** as an opt-in folder watcher (not live packet capture). Original note (also a bigger
     lift) — [dhanush-girish](https://github.com/dhanush-girish/securemailscope)
     built a file watcher (`watch_and_forward.py`) that forwards newly
     captured sessions into the pipeline automatically, plus a `/history`

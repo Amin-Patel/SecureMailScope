@@ -9,14 +9,13 @@ competitive field. Independent features, each implementable and mergeable
 on its own — this doc records the scoping so anyone can pick one up.
 
 
-> **Status (2026-09-19): implemented.** All four features are built and in
+> **Status (2026-09-19): implemented and merged into `main`** via
 > [PR #3](https://github.com/Amin-Patel/SecureMailScope/pull/3)
-> (`feature/roadmap-pdf-grading-monitoring-emailauth`). Sections below keep
-> the original scoping; each has an **As built** note where the shipped
-> version differs. The threat-intel feed is separate, in
-> [PR #4](https://github.com/Amin-Patel/SecureMailScope/pull/4). The two PRs
-> conflict in `.gitignore`, `.env.example` and `security_engine.py` (adjacent
-> additions): merge #3 first, then resolve #4 keeping both sides.
+> (the threat-intel feed, a separate feature, merged as
+> [PR #4](https://github.com/Amin-Patel/SecureMailScope/pull/4)). Sections
+> below keep the original scoping; each has an **As built** note where the
+> shipped version differs. For the full current status and what is left, see
+> [`Feature-Status-and-Backlog.md`](Feature-Status-and-Backlog.md).
 
 ---
 
