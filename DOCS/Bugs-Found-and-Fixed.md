@@ -1,5 +1,9 @@
 # Bugs Found This Session — Summary
 
+> **Open findings from the 2026-09-21 audit: see [`Audit-2026-09-21.md`](Audit-2026-09-21.md).**
+> That audit re-verifies items 1–6 below (item 6 is reopened and escalated; items
+> 2 and 5 partially regressed) and adds new findings F7–F34.
+
 A running log of pre-existing bugs discovered (and, where in scope, fixed)
 while building the RAG knowledge base, the forward-secrecy check, the
 certificate-pipeline fix (`feature/rag-knowledge-base`), and the ML risk
