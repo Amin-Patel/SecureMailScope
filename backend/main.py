@@ -213,28 +213,31 @@ async def upload_and_analyze(
 @app.get("/api/demo/samples")
 @limiter.limit("60/minute")
 async def list_demo_samples(request: Request):
-    """List available pre-packaged demo scenarios."""
+    """List available pre-packaged demo scenarios.
+
+    Every expected_risk below is measured against the shipped capture on this
+    branch, not carried forward from an earlier engine (F40)."""
     samples = [
         {
             "id": "vulnerable_smtp",
             "name": "Vulnerable SMTP Infrastructure",
             "description": "Cleartext port 25 transmission with missing STARTTLS and exposed email payloads.",
             "file": "smtp.pcap",
-            "expected_risk": "HIGH / CRITICAL (55/100)"
+            "expected_risk": "HIGH (57/100, grade E)"
         },
         {
             "id": "legacy_ssl3",
             "name": "Legacy SSL 3.0 Handshake (POODLE Target)",
             "description": "Outdated cryptographic handshake using deprecated SSL 3.0 protocol.",
             "file": "rsasnakeoil2.cap",
-            "expected_risk": "CRITICAL / DEPRECATED"
+            "expected_risk": "CRITICAL (80/100, grade F)"
         },
         {
             "id": "secure_enterprise",
             "name": "Compliant Enterprise Posture (SMTPS + IMAPS)",
             "description": "100% encrypted email transport using modern TLS 1.2/1.3 and AEAD cipher suites.",
             "file": "secure_mail.pcap",
-            "expected_risk": "CLEAN / LOW (0/100)"
+            "expected_risk": "LOW (0/100, grade A)"
         },
         {
             "id": "sih_comprehensive",

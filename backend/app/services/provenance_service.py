@@ -8,6 +8,11 @@ through deterministic analysis rules and baselines to final security findings.
 import os
 import re
 import hashlib
+
+try:
+    from app.core.cipher_suites import lookup as lookup_cipher_suite
+except ImportError:  # pragma: no cover - import style depends on entry point
+    from core.cipher_suites import lookup as lookup_cipher_suite
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
 
@@ -579,16 +584,23 @@ class ProvenanceGraphBuilder:
                             evidence_linked_for_this_finding.append(hs_node)
 
             elif f_type == 'weak_cipher':
-                # Link handshakes containing weak ciphers
-                weak_codes = {'0x0004', '0x0005', '0x000a', '0x0009', '0x0016'}
+                # Link only the ServerHellos that actually negotiated a weak
+                # suite, decided by the same IANA registry the security engine
+                # uses. Matching every handshake against a hardcoded code list
+                # would cite a ClientHello's offer list as proof of negotiation,
+                # which is the defect F37 describes.
                 for i, hs in enumerate(handshakes):
-                    ciphers = [c.lower() for c in hs.get('cipher_suites', [])]
-                    if any(wc in ciphers or 'rc4' in c or '3des' in c for c in ciphers for wc in weak_codes):
-                        hs_node = handshake_map.get(hs.get('frame', i + 1))
-                        if hs_node:
-                            self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
-                            self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'negotiates weak cipher', is_direct=True)
-                            evidence_linked_for_this_finding.append(hs_node)
+                    if hs.get('handshake_type') != 'ServerHello':
+                        continue
+                    for c in hs.get('cipher_suites', []):
+                        info = lookup_cipher_suite(c)
+                        if info and info['weak']:
+                            hs_node = handshake_map.get(hs.get('frame', i + 1))
+                            if hs_node:
+                                self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                                self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'negotiates weak cipher', is_direct=True)
+                                evidence_linked_for_this_finding.append(hs_node)
+                            break
 
             elif f_type in ['weak_signature', 'insufficient_key_size', 'expired_certificate', 'self_signed_certificate']:
                 # Link matching certificate nodes
@@ -637,16 +649,26 @@ class ProvenanceGraphBuilder:
                         evidence_linked_for_this_finding.append(c_node)
 
             elif f_type == 'no_forward_secrecy':
-                # Link the handshakes whose negotiated key exchange is static
-                # (no ECDHE/DHE), which is what the finding is asserting.
+                # Mirror check_forward_secrecy exactly: ServerHello only, TLS 1.3
+                # skipped (it mandates ephemeral key exchange), and the verdict
+                # taken from the registry's forward_secret flag rather than from
+                # the text of a cipher name. tshark reports cipher suites as hex
+                # codes, so any string test for "DHE" matches nothing and would
+                # link every handshake, ECDHE ones included.
                 for i, hs in enumerate(handshakes):
-                    names = ' '.join(str(c) for c in hs.get('cipher_suites', [])).upper()
-                    if names and 'DHE' not in names:
-                        hs_node = handshake_map.get(hs.get('frame', i + 1))
-                        if hs_node:
-                            self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
-                            self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'static key exchange, no forward secrecy', is_direct=True)
-                            evidence_linked_for_this_finding.append(hs_node)
+                    if hs.get('handshake_type') != 'ServerHello':
+                        continue
+                    if hs.get('tls_version') == 'TLS 1.3':
+                        continue
+                    for c in hs.get('cipher_suites', []):
+                        info = lookup_cipher_suite(c)
+                        if info and not info['forward_secret']:
+                            hs_node = handshake_map.get(hs.get('frame', i + 1))
+                            if hs_node:
+                                self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                                self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'static key exchange, no forward secrecy', is_direct=True)
+                                evidence_linked_for_this_finding.append(hs_node)
+                            break
 
             elif f_type in ['email_authentication', 'missing_dkim', 'missing_spf', 'missing_dmarc']:
                 # Email-authentication findings cite the stream each message was

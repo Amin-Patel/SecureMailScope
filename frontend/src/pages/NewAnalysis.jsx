@@ -36,14 +36,14 @@ export function NewAnalysis() {
             name: "Vulnerable SMTP Infrastructure",
             description: "SMTP capture showing plaintext transmission and missing authentication security layers.",
             file: "smtp.pcap",
-            expected_risk: "HIGH"
+            expected_risk: "HIGH (57/100, grade E)"
           },
           {
             id: "legacy_ssl3",
             name: "Legacy SSL 3.0 Handshake",
             description: "SSL 3.0 legacy protocol negotiation, exhibiting vulnerability to the POODLE exploit vector.",
             file: "rsasnakeoil2.cap",
-            expected_risk: "CRITICAL"
+            expected_risk: "CRITICAL (80/100, grade F)"
           },
           {
             id: "sih_comprehensive",
@@ -51,7 +51,7 @@ export function NewAnalysis() {
             // Measured on this branch, not carried forward (F40).
             description: "Multi-protocol email capture across SMTP, SMTP-Submission, SMTP-Alt, POP3 and IMAP, mixing SSL 3.0 and TLS 1.2 handshakes with cleartext traffic and four X.509 certificates.",
             file: "SecureMailScope_SIHDemo.pcap",
-            expected_risk: "CRITICAL"
+            expected_risk: "CRITICAL (100/100, grade F)"
           }
         ]);
       });
@@ -141,7 +141,9 @@ export function NewAnalysis() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {samples.map((sample) => {
-                  const isCritical = sample.expected_risk === 'CRITICAL';
+                  // expected_risk is a sentence like "CRITICAL (100/100, grade F)",
+                  // so an exact equality test never matched any preset.
+                  const isCritical = String(sample.expected_risk || '').includes('CRITICAL');
                   const bg = isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)';
                   const border = isCritical ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)';
                   const color = isCritical ? '#f87171' : '#fbbf24';
