@@ -1,0 +1,10 @@
+# Test-only dependencies. Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Every file under backend/tests/ imports pytest, and five of them build a
+# fastapi.testclient.TestClient, which requires httpx. Neither was declared
+# anywhere before (F47), so the committed test suite could not be run from the
+# documented setup.
+-r requirements.txt
+pytest>=8.0,<9
+httpx>=0.27,<1
