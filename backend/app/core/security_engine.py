@@ -215,12 +215,20 @@ class SecurityEngine:
         among many options isn't itself a vulnerability if the server never
         selects it. tshark reports the negotiated cipher as a raw hex code
         (e.g. "0x0035"), so this looks it up in the IANA cipher-suite
-        registry rather than string-matching cipher names."""
+        registry rather than string-matching cipher names.
+
+        Evidence ordering is deterministic and the list is complete: suites are
+        keyed by cipher code and emitted in ascending code order, and no slice is
+        applied, so the same capture always yields byte-identical evidence and a
+        negotiated weak suite can never be dropped from it (F42). Only entries
+        tshark positively identifies as ServerHello are considered -- an entry
+        with an empty/unmapped handshake type is not evidence of negotiation and
+        may be a ClientHello offer list (F37)."""
         handshakes = self.data.get('tls_handshakes', [])
         weak_found: Dict[str, str] = {}  # cipher_code -> name
 
         for hs in handshakes:
-            if hs.get('handshake_type') and hs.get('handshake_type') != 'ServerHello':
+            if hs.get('handshake_type') != 'ServerHello':
                 continue
             ciphers = hs.get('cipher_suites', [])
             if not ciphers:
@@ -231,7 +239,7 @@ class SecurityEngine:
                     weak_found[c] = f"{info['name']} ({info['weak_reason']})"
 
         if weak_found:
-            names = list(weak_found.values())
+            names = [weak_found[code] for code in sorted(weak_found)]
             self._add_finding(
                 severity='CRITICAL',
                 finding_type='weak_cipher',
@@ -239,11 +247,11 @@ class SecurityEngine:
                 title='Weak Cipher Suites Detected',
                 description=(
                     f"The following weak cipher suite(s) were negotiated: "
-                    f"{', '.join(names[:5])}. These are vulnerable to known "
+                    f"{', '.join(names)}. These are vulnerable to known "
                     f"attacks (BEAST, Sweet32, RC4 keystream biases, FREAK) "
                     f"or provide no encryption at all."
                 ),
-                evidence=f"Negotiated weak cipher(s): {', '.join(names[:5])}",
+                evidence=f"Negotiated weak cipher(s): {', '.join(names)}",
                 structured_evidence={'weak_ciphers': names},
                 remediation=(
                     "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers from the server config\n"
