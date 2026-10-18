@@ -20,6 +20,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
 from main import app
+from app.core.auth import get_current_user, get_optional_user
+
+# The trunk requires a Supabase bearer token on /api/upload and /api/analyses,
+# and scopes every stored analysis to its owner. Rather than relaxing the
+# endpoints, the auth dependencies are overridden for the duration of this
+# suite with a fixed synthetic user, which is how FastAPI expects an
+# authenticated route to be exercised under test.
+TEST_USER = {"user_id": "test-suite-user-0001", "email": "tests@securemailscope.local", "role": "authenticated"}
+app.dependency_overrides[get_current_user] = lambda: TEST_USER
+app.dependency_overrides[get_optional_user] = lambda: TEST_USER
 
 client = TestClient(app)
 _base_backend = Path(__file__).resolve().parent.parent
@@ -27,14 +37,18 @@ RESULTS_DIR = _base_backend / "results" if (_base_backend / "results").exists() 
 TEST_DATA_DIR = _base_backend / "test-data" if (_base_backend / "test-data").exists() else Path("test-data")
 
 
-def test_t23_55_percent_vulnerable_smtp_demo():
-    """T23 — Verify existing 55% risk demo opens its own correct graph and metadata"""
+def test_t23_vulnerable_smtp_demo():
+    """T23 — Verify the vulnerable_smtp demo opens its own correct graph and metadata.
+
+    The expected risk score is 57, re-measured on this branch. The suite was
+    written against a base that lacked the email-authentication checks and
+    scored this capture 55."""
     res = client.post("/api/demo/load/vulnerable_smtp")
     assert res.status_code == 200, "Must successfully load vulnerable_smtp demo"
     data = res.json()
     capture_id = data["capture_id"]
     risk = data.get("summary", {}).get("risk_score") or data.get("risk", {}).get("risk_score")
-    assert risk == 55, f"Expected risk 55, got {risk}"
+    assert risk == 57, f"Expected risk 57, got {risk}"
 
     # Fetch provenance graph
     prov_res = client.get(f"/api/analysis/{capture_id}/provenance")
@@ -46,7 +60,7 @@ def test_t23_55_percent_vulnerable_smtp_demo():
     # Check that plaintext SMTP rule is present
     op_nodes = [n for n in graph["nodes"] if n["type"] == "analysis_operation"]
     assert any("PLAINTEXT" in n["id"] or "STARTTLS" in n["id"] for n in op_nodes)
-    print("✓ T23: 55% Risk Vulnerable SMTP Demo verified successfully.")
+    print("[ok] T23: Vulnerable SMTP demo verified successfully (risk 57).")
 
 
 def test_t24_different_demo_scenarios():
@@ -73,9 +87,12 @@ def test_t24_different_demo_scenarios():
     sih_id = res_sih.json()["capture_id"]
     sih_graph = client.get(f"/api/analysis/{sih_id}/provenance").json()
     assert sih_graph["metrics"]["total_nodes"] > clean_graph["metrics"]["total_nodes"]
-    assert sih_graph["metrics"]["findings_linked"] == 6
+    # 16 findings, every one of them carrying artefact evidence. The suite was
+    # written against a base whose certificate pipeline produced 6.
+    assert sih_graph["metrics"]["findings_linked"] == 16
+    assert sih_graph["metrics"]["findings_unlinked"] == 0
 
-    print("✓ T24: Multi-Scenario Demos verified (Clean, SSL 3.0, SIH Comprehensive).")
+    print("[ok] T24: Multi-Scenario Demos verified (Clean, SSL 3.0, SIH Comprehensive).")
 
 
 def test_t25_new_pcap_upload_workflow():
@@ -101,7 +118,7 @@ def test_t25_new_pcap_upload_workflow():
     assert analyses_res.status_code == 200
     analyses = analyses_res.json()["analyses"]
     assert any(a["capture_id"] == new_capture_id for a in analyses[:3]), "New analysis must be near top of recent analyses"
-    print("✓ T25: New PCAP Upload & Dynamic Provenance Registration verified.")
+    print("[ok] T25: New PCAP Upload & Dynamic Provenance Registration verified.")
 
 
 def test_t26_dropdown_switching_and_retrieval():
@@ -121,7 +138,7 @@ def test_t26_dropdown_switching_and_retrieval():
     # Nodes must be scoped to their own capture
     assert any(first_id in n["id"] for n in graph_1["nodes"] if n["type"] == "source_artifact")
     assert any(second_id in n["id"] for n in graph_2["nodes"] if n["type"] == "source_artifact")
-    print("✓ T26: Dropdown Switching & Strict ID Scoping verified.")
+    print("[ok] T26: Dropdown Switching & Strict ID Scoping verified.")
 
 
 def test_t27_repeated_filename_distinction():
@@ -140,7 +157,7 @@ def test_t27_repeated_filename_distinction():
     g2 = client.get(f"/api/analysis/{id2}/provenance").json()
     assert g1["capture_id"] == id1
     assert g2["capture_id"] == id2
-    print("✓ T27: Repeated Filename Distinction verified.")
+    print("[ok] T27: Repeated Filename Distinction verified.")
 
 
 def test_t28_missing_or_invalid_analysis_handling():
@@ -150,11 +167,13 @@ def test_t28_missing_or_invalid_analysis_handling():
     assert res_fake.status_code == 404
     assert "not found" in res_fake.json().get("detail", "").lower()
 
-    # 2. Invalid node in valid capture
-    valid_id = next(RESULTS_DIR.glob("*.json")).stem
+    # 2. Invalid node in valid capture. The capture is created here rather than
+    # taken from results/, which is no longer tracked and is empty in a fresh
+    # clone.
+    valid_id = client.post("/api/demo/load/vulnerable_smtp").json()["capture_id"]
     res_fake_node = client.get(f"/api/analysis/{valid_id}/provenance/node/fake_node_id_xyz")
     assert res_fake_node.status_code == 404
-    print("✓ T28: Missing & Invalid Analysis Error Handling verified.")
+    print("[ok] T28: Missing & Invalid Analysis Error Handling verified.")
 
 
 def test_t29_stale_data_prevention_and_isolation():
@@ -179,9 +198,9 @@ def test_t29_stale_data_prevention_and_isolation():
     assert f"artifact:{sih_file}" not in clean_node_ids
     # Clean capture should have 0 findings
     assert len([n for n in g_clean["nodes"] if n["type"] == "finding"]) == 0
-    # SIH capture should have 6 findings
-    assert len([n for n in g_sih["nodes"] if n["type"] == "finding"]) == 6
-    print("✓ T29: Cross-Analysis Isolation & Stale-Data Prevention verified.")
+    # SIH capture should have 16 findings (see T24)
+    assert len([n for n in g_sih["nodes"] if n["type"] == "finding"]) == 16
+    print("[ok] T29: Cross-Analysis Isolation & Stale-Data Prevention verified.")
 
 
 def test_t30_regression_endpoints():
@@ -193,21 +212,21 @@ def test_t30_regression_endpoints():
     # Analyses list
     assert client.get("/api/analyses").status_code == 200
 
-    sample_id = next(RESULTS_DIR.glob("*.json")).stem
+    sample_id = client.post("/api/demo/load/vulnerable_smtp").json()["capture_id"]
     # Analysis results JSON
     assert client.get(f"/api/analysis/{sample_id}/results").status_code == 200
     # Forensic Report HTML
     assert client.get(f"/api/analysis/{sample_id}/report?format=html").status_code == 200
     # Forensic Report JSON
     assert client.get(f"/api/analysis/{sample_id}/report?format=json").status_code == 200
-    print("✓ T30: Core Regression Verification (Health, Results, Reports, History) passed.")
+    print("[ok] T30: Core Regression Verification (Health, Results, Reports, History) passed.")
 
 
 if __name__ == "__main__":
     print("\n" + "="*70)
     print("  Executing Provenance Dynamic Matrix & Isolation Test Suite")
     print("="*70 + "\n")
-    test_t23_55_percent_vulnerable_smtp_demo()
+    test_t23_vulnerable_smtp_demo()
     test_t24_different_demo_scenarios()
     test_t25_new_pcap_upload_workflow()
     test_t26_dropdown_switching_and_retrieval()

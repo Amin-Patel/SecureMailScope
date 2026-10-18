@@ -92,9 +92,14 @@ def test_invalid_signature_fails():
 def test_weak_cipher_detection():
     data = {
         'summary': {'total_packets': 10, 'plaintext_packets': 0},
+        # check_weak_ciphers only considers handshakes tshark positively
+        # identifies as ServerHello, so that a ClientHello offer list is never
+        # reported as negotiated (F37/F42). The fixture must say so explicitly.
         'tls_handshakes': [
-            {'cipher_suites': ['TLS_RSA_WITH_RC4_128_MD5', 'TLS_RSA_WITH_3DES_EDE_CBC_SHA']},
-            {'cipher_suites': ['TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384']}
+            {'handshake_type': 'ServerHello',
+             'cipher_suites': ['TLS_RSA_WITH_RC4_128_MD5', 'TLS_RSA_WITH_3DES_EDE_CBC_SHA']},
+            {'handshake_type': 'ServerHello',
+             'cipher_suites': ['TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384']}
         ]
     }
     engine = SecurityEngine(data)
