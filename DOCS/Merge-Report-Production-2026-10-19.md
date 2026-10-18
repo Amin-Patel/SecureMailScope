@@ -27,7 +27,8 @@ from source, not run.
 
 ## 1. Branch and commits
 
-`Production` = `74abf95`, nine commits on `3974bc9`:
+`Production` = `5f83c16`, eleven commits on `3974bc9` (this report's own commit
+is the twelfth and final one):
 
 | SHA | Subject |
 |---|---|
@@ -40,9 +41,11 @@ from source, not run.
 | `a8e84b5` | chore(deps): reconcile declared dependencies with what the merged code imports |
 | `4fcfce6` | test: reconcile the ported backend tests with the hardened trunk |
 | `74abf95` | chore: take .claude/launch.json from Yash; drop obsolete compose version key |
+| `aa42590` | docs: add the Production merge report (this file, first revision) |
+| `5f83c16` | fix: stop the DAG citing non-negotiating handshakes, and finish F40 |
 
-`git diff --shortstat 3974bc9 HEAD` → **167 files changed, 11,130 insertions,
-10,205 deletions** (the deletions are overwhelmingly the 111 untracked
+`git diff --shortstat 3974bc9 HEAD` → **168 files changed, 11,578 insertions,
+10,212 deletions** (measured at `5f83c16`, before this report was committed) (the deletions are overwhelmingly the 111 untracked
 upload/result blobs).
 
 **`git merge Amin` was never run.** A branch merge produces eight content
@@ -150,8 +153,34 @@ Amin's stale base to the trunk:
    `certificate_pki` (resolved by the frame cited in the evidence, falling back
    to subject CN), `no_forward_secrecy` (handshakes with a static key exchange)
    and `email_authentication` (matched on the TCP stream id the finding cites).
-   Measured on the demo capture: **59 nodes, 146 edges, findings_linked 16,
+   Measured on the demo capture: **59 nodes, 126 edges, findings_linked 16,
    findings_unlinked 0**. **[executed]**
+3. **Two linkage branches asserted things the capture does not show.** Edge
+   count is not evidence quality, and citing an artefact that does not support
+   a finding is the exact failure mode F43 describes, so every
+   `SUPPORTS_FINDING` edge was dumped with its source node's handshake type and
+   cipher list and checked by hand. **[executed]**
+   - `no_forward_secrecy` tested `'DHE' not in cipher_names`, but tshark
+     reports cipher suites as hex codes (`0x0035`, `0xc02f`), so the test was
+     true for every handshake carrying any cipher: **14 handshakes linked,
+     including six ClientHello offer lists and the three ECDHE ServerHellos at
+     frames 89/126/155, which are forward-secret.** It now mirrors
+     `check_forward_secrecy` — ServerHello only, TLS 1.3 skipped, verdict taken
+     from the registry's `forward_secret` flag. Measured after the fix: frames
+     **6, 27, 99, 165**, the four static-RSA ServerHellos, matching the
+     finding's own evidence string.
+   - `weak_cipher` (Amin's branch, originally kept as-is) matched a hardcoded
+     hex set across *all* handshakes and so cited the frame-25 ClientHello's
+     20-suite offer list as proof of negotiation — **F37 re-appearing inside
+     the DAG after being fixed in the engine.** Now ServerHello only, through
+     the same IANA registry. Measured after the fix: **frame 27 alone**, the
+     ServerHello that negotiated 3DES.
+   - `deprecated_protocol` links all 11 SSL 3.0 handshake records, which is
+     consistent with the finding's own text ("11 TLS handshakes using SSL
+     3.0"), so it was left alone.
+
+   Edges fall from 146 to 126; nodes, findings and linked/unlinked are
+   unchanged.
 
 `BASE_DIR` in `main.py` became `Path(__file__).resolve().parent`; Amin's cwd
 fallback was not taken (reason in §2).
@@ -189,7 +218,7 @@ picking a side:
 | 14 | RAG knowledge base | `get_knowledge_base().list_sources()`; findings | 12 curated sources; 12 of 16 findings carry `ai_reference` quoting KB text; `ai_source = SecureMailScope-Intelligence-Engine` | **executed (offline retrieval engine; no `GEMINI_API_KEY`)** |
 | 15 | Crypto state engine | `CryptographicStateEngine(...).evaluate()` | `CRYPTOGRAPHIC_FAILURE`; 10 normalized rules; 2 cross-property insights; 0 unresolved conditions | **executed** |
 | 16 | Evidence assessment engine | `EvidenceAssessmentEngine(...).evaluate()` | 11 assessed: 0 satisfied / 8 violated / 2 indeterminate / 1 undefined | **executed** |
-| 17 | Provenance DAG | `ProvenanceGraphBuilder(...).build()` + both endpoints | 59 nodes, 146 edges, 7 node types, findings_linked 16, unlinked 0 | **executed** |
+| 17 | Provenance DAG | `ProvenanceGraphBuilder(...).build()` + both endpoints | 59 nodes, 126 edges, 7 node types, findings_linked 16, unlinked 0; every `SUPPORTS_FINDING` edge audited by hand (§4) | **executed** |
 | 18 | JSON / HTML / PDF export | `GET /report?format=…` | 200 / 186,183 B `application/json`; 200 / 39,792 B `text/html`; 200 / 36,502 B `application/pdf`; invalid format → 422 | **executed** |
 | 19 | Folder watcher | `PcapWatcher(backend/watch, …)`, file dropped in | picked up `dropped_by_inventory.pcap`, analysed in 1.0 s, status `completed`, `capture_id watch_dropped_by_inventory_7e9ae4` | **executed** |
 | 20 | SSLBL threat intel | `get_threat_intel_feed()` | downloaded `sslbl.abuse.ch/blacklist/sslblacklist.csv`, cached 839,711 B, **10,997** fingerprints; positive lookup → `{'listed_since': '2026-10-18 12:25:30', 'reason': 'PureLogsStealer C&C'}`; negative lookup → `None` | **executed (live fetch)** |
@@ -197,7 +226,7 @@ picking a side:
 | 22 | IDOR hardening | two users via `dependency_overrides` | user B against user A's capture: results 403, provenance 403, provenance node 403, report 403, stream 403, delete 403, batch-delete `deleted_count: 0` | **executed** |
 | 23 | Path-traversal protection | 10 probes on `/results` and `/provenance` | `..%2F..%2Fsecret` → 404, `a%5C..%5Cb` → 400, `..` → 404, `with spaces` → 400, `x;y` → 400 | **executed** |
 | 24 | Knowledge-base admin / gap endpoints | 5 calls | sources 200, gaps 200, pending 200, kb/articles 200, gap-propose → 503 with an honest "requires GEMINI_API_KEY, there is no offline drafting path" | **executed** |
-| 25 | Demo presets | `GET /api/demo/samples` + 4 loads | 4 presets; all four advertised values match what the load measures | **executed** |
+| 25 | Demo presets | `GET /api/demo/samples` + 4 loads | advertised `HIGH (57/100, grade E)`, `CRITICAL (80/100, grade F)`, `LOW (0/100, grade A)`, `CRITICAL (100/100, grade F)`; measured 57/HIGH/E, 80/CRITICAL/F, 0/LOW/A, 100/CRITICAL/F — **all four match** | **executed** |
 | 26 | docker / nginx | `docker compose config` | exit 0; backend service, healthcheck, ports and 4 named volumes resolved. `nginx.conf` present (4,072 B) | **config validated; not built, not run** |
 | 27 | Frontend build | `npm ci`; `npm run build` | `npm ci` 5.1 s, 157 packages; build 328 modules in ~210 ms, only a chunk-size advisory. `@xyflow/react@12.12.0` resolved and bundled | **executed** |
 | 28 | Frontend pages | `vite dev` + browser | app serves; landing and `/login` render; `/provenance` correctly redirects an unauthenticated visitor | **partially executed — see §9** |
@@ -281,7 +310,7 @@ recur — the read endpoint no longer writes, and `results/` is no longer tracke
 | ID | Fix | Evidence |
 |---|---|---|
 | **F42 / F37** | `check_weak_ciphers`: suites keyed by cipher code, emitted in ascending code order, **no `[:5]` slice**, and only entries tshark positively identifies as `ServerHello`. | Four separate processes over four captures → byte-identical evidence every time. The pre-fix rendering (set + slice of 5) varied between processes and dropped one of six negotiated suites in a synthetic 7-server case; it also reported five offered-only ciphers from a ClientHello with an empty handshake type, where the fixed version reports none. **[executed]** |
-| **F40** | demo preset metadata re-measured, not copied: `CRITICAL (100/100, grade F)` and a description naming the protocols and TLS versions actually present. | `GET /api/demo/samples` advertises it; `POST /api/demo/load/sih_comprehensive` measures 100/CRITICAL grade F with 16 findings. All four presets' advertised values now match their measured loads. **[executed]** |
+| **F40** | **all four** presets re-measured, not copied, in both `backend/main.py` and the `NewAnalysis.jsx` fallback. The brief named only the new preset, but `vulnerable_smtp` was wrong too (advertised 55, measures 57) and `legacy_ssl3` carried no number at all. | advertised vs measured, side by side: 57/HIGH/E vs 57/HIGH/E; 80/CRITICAL/F vs 80/CRITICAL/F; 0/LOW/A vs 0/LOW/A; 100/CRITICAL/F vs 100/CRITICAL/F. Also fixed the preset card's `expected_risk === 'CRITICAL'` test — an exact comparison against a sentence, which never matched any preset before or after. **[executed]** |
 | **F46 (partly)** | the two new endpoints go through `sanitize_capture_id` + `check_resource_ownership`; the `GET /results` write-back is gone. | §6 rows 22–23. The trunk's own five sinks were already sanitised. |
 | **F47** | `backend/requirements-dev.txt` declaring `pytest` and `httpx`. | — |
 | **F48** | three competing test-root conventions unified; `test` scripts added. | 27/27 from both cwds **[executed]** |
@@ -345,6 +374,7 @@ fixed, and the ordering is now explicit rather than incidental.
 | `frontend/src/index.css` | 222 lines of Amin's styles merged with the trunk's 15. Clean three-way merge, no visual check. |
 | `backend/tests/test_provenance_dynamic_matrix.py` | Numeric expectations changed from 55→57 and 6→16 because this branch measures those values. If the engine's scoring is retuned, these move again. |
 | `backend/app/services/provenance_service.py` | The `certificate_pki` CN fallback matches on substring within the finding title/evidence. Correct for the captures here; a certificate whose CN is a substring of another's would over-link. |
+| `backend/tests/test_crypto_pki.py` | **A trunk test fixture was edited.** `test_weak_cipher_detection`'s mock handshakes carried no `handshake_type`, so they only produced a finding under the old loose guard; tightening the guard to ServerHello-only made it fail. The fixture now says `'handshake_type': 'ServerHello'` and the assertion is untouched — but this is a trunk test changed to accommodate a deliberate semantic change, and a reviewer should agree the semantics are right. |
 | `backend/requirements.txt` | `python-dateutil` and `pyshark` were removed as unimported. If either is needed transitively at runtime, pip will still resolve it, but the intent should be confirmed. |
 | `LICENSE` | MIT, taken from Amin. A licensing decision, not a technical one — confirm it is the intended licence. |
 | README | There is none. Amin's was rejected as inaccurate; one should be written. |
@@ -412,3 +442,7 @@ docker compose up --build                 # not exercised in this report
 SIH Demo (Multi-Protocol)**. Expect 100/100 CRITICAL, grade F, 16 findings, and
 — on the Evidence Graph tab or the Evidence Provenance page — 59 nodes and 146
 edges with four certificate nodes reading 1024/2048/1024/2048.
+
+**Node version:** `npm test` runs `node --test "tests/*.test.mjs"`, and glob
+patterns for `node --test` require **Node 21 or newer** (measured on Node
+v22.20.0). On Node 20 LTS, name the five files explicitly or upgrade Node.
