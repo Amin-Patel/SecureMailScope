@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Presets API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+        }
+        .preset {
+            background: #16213e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #0f3460;
+        }
+        h1 { color: #4ecca3; }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        button {
+            background: #4ecca3;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>SecureMailScope - Preset API Test</h1>
+    <button onclick="testAPI()">Test API</button>
+    <button onclick="testFrontendState()">Check Frontend State</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Testing API...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:8001/api/demo/samples');
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h2 class="success">✓ API Response Successful</h2>
+                    <p><strong>Total Presets:</strong> ${data.samples.length}</p>
+                    ${data.samples.map((preset, index) => `
+                        <div class="preset">
+                            <h3>${index + 1}. ${preset.name}</h3>
+                            <p><strong>ID:</strong> ${preset.id}</p>
+                            <p><strong>Risk:</strong> ${preset.expected_risk}</p>
+                            <p><strong>File:</strong> ${preset.file}</p>
+                            <p><strong>Description:</strong> ${preset.description}</p>
+                        </div>
+                    `).join('')}
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<h2 class="error">✗ API Error</h2><p>${error.message}</p>`;
+            }
+        }
+        
+        function testFrontendState() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <h2>Frontend State Check</h2>
+                <p>Navigate to: <a href="http://localhost:5173/workspace" target="_blank" style="color: #4ecca3;">http://localhost:5173/workspace</a></p>
+                <p>Open Browser DevTools (F12) and check Console for these messages:</p>
+                <pre style="background: #0d1117; padding: 15px; border-radius: 5px; overflow-x: auto;">
+[NewAnalysis] DIAGNOSTIC CHECK
+[NewAnalysis] DEFAULT_SAMPLES count: ?
+[NewAnalysis] samples state count: ?
+[NewAnalysis] displaySamples count: ?
+[NewAnalysis] displaySamples IDs: ?
+                </pre>
+                <p><strong>Expected:</strong> All counts should be <span class="success">4</span></p>
+                <p><strong>If you see 3:</strong> The frontend is not using the latest code</p>
+            `;
+        }
+        
+        // Auto-run on load
+        window.onload = testAPI;
+    </script>
+</body>
+</html>

@@ -27,11 +27,16 @@ pnpm-debug.log*
 Thumbs.db
 
 # Runtime / generated files
-uploads/
-reports/
-dataset/
-test/
+/uploads/
+backend/uploads/
+/results/
+backend/results/
+/reports/
+!docs/reports/
+/dataset/
+/test/
 test_output.txt
+/archive/
 
 # PCAP captures (exclude uploads, but allow demo files in test-data)
 *.pcap

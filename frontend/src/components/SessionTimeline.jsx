@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 
-export function SessionTimeline({ sessions = [] }) {
+export function SessionTimeline({ sessions = [], captureId = '' }) {
   const [filter, setFilter] = useState('all'); // 'all', 'encrypted', 'plaintext'
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -273,6 +274,32 @@ export function SessionTimeline({ sessions = [] }) {
                     <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.35)', textAlign: 'right' }}>
                       {session.start_time && <div>Start: {session.start_time}</div>}
                     </div>
+                  )}
+
+                  {/* Evidence Provenance Graph Link */}
+                  {captureId && (
+                    <Link
+                      to={`/provenance?job=${encodeURIComponent(captureId)}&node=session:${encodeURIComponent(session.id || session.session_id || idx)}`}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        border: '1px solid rgba(99, 102, 241, 0.35)',
+                        color: '#a5b4fc',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.2s ease',
+                      }}
+                      title={`Inspect session in Evidence Provenance Graph`}
+                    >
+                      <i className="fa-solid fa-diagram-project" style={{ fontSize: '10px' }} />
+                      <span>Graph</span>
+                    </Link>
                   )}
                 </div>
               </div>

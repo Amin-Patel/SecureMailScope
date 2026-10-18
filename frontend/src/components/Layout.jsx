@@ -10,9 +10,11 @@ const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/workspace', label: 'Workspace' },
   { to: '/analysis', label: 'Analysis' },
+  { to: '/provenance', label: 'Evidence Provenance', shortLabel: 'Provenance' },
   { to: '/history', label: 'History' },
   { to: '/help', label: 'Help' },
 ];
+
 
 const STATS = [
   { icon: 'fa-bolt', target: 250, decimals: 0, prefix: '<', suffix: 'ms', fallback: '<250ms', label: 'Analysis Speed' },
@@ -28,10 +30,10 @@ export function Layout({ children }) {
   const footerRef = useRef(null);
   useStatsCounter(footerRef);
 
-  // Close menu on resize > 720px
+  // Close menu on resize > 880px
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth > 720 && menuOpen) {
+      if (window.innerWidth > 880 && menuOpen) {
         setMenuOpen(false);
       }
     };
@@ -110,13 +112,21 @@ export function Layout({ children }) {
           </Link>
 
           <nav className="nav-pill">
-            {NAV_LINKS.map(({ to, label }) => (
+            {NAV_LINKS.map(({ to, label, shortLabel }) => (
               <Link
                 key={to}
                 to={to}
                 className={`nav-link ${isActive(to) ? 'active' : ''}`}
+                title={label}
               >
-                {label}
+                {shortLabel ? (
+                  <>
+                    <span className="nav-label-long">{label}</span>
+                    <span className="nav-label-short">{shortLabel}</span>
+                  </>
+                ) : (
+                  label
+                )}
               </Link>
             ))}
           </nav>

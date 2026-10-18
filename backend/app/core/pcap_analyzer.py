@@ -16,6 +16,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.tshark_helper import TSharkHelper
 from utils.cert_analyzer import CertificateAnalyzer
 from core.security_engine import SecurityEngine
+from core.crypto_state_engine import CryptographicStateEngine
+from core.evidence_assessment_engine import EvidenceAssessmentEngine
 from services.gemini_service import GeminiSecurityAssistant
 
 
@@ -104,11 +106,26 @@ class EmailPCAPAnalyzer:
             )
             print("       AI Threat Intelligence generated successfully")
 
+            # Step 6b: Cryptographic State Reasoning Engine (USP 2)
+            print("[6b/7] Executing Unified Cryptographic State Reasoning...")
+            analysis_data['findings'] = findings
+            crypto_engine = CryptographicStateEngine(analysis_data)
+            crypto_assessment = crypto_engine.evaluate()
+            print(f"       Cryptographic State: {crypto_assessment['overall_state_label']}")
+
+            # Step 6c: Evidence-Based Assessment Engine (USP 5)
+            print("[6c/7] Executing Evidence-Based Assessment (Observed / Expected / Unknown)...")
+            evidence_engine = EvidenceAssessmentEngine(analysis_data)
+            evidence_assessment = evidence_engine.evaluate()
+            print(f"       Assessed {evidence_assessment['metrics']['total_assessed']} properties: {evidence_assessment['metrics']['satisfied_count']} Satisfied, {evidence_assessment['metrics']['violated_count']} Violated, {evidence_assessment['metrics']['indeterminate_count']} Indeterminate")
+
             # Step 7: Compile results
             print("[7/7] Compiling results...\n")
             summary = analysis_data['summary']
             summary['risk_score'] = risk['risk_score']
             summary['risk_level'] = risk['risk_level']
+            summary['cryptographic_state'] = crypto_assessment['overall_state']
+            summary['cryptographic_state_label'] = crypto_assessment['overall_state_label']
 
             result = {
                 'success': True,
@@ -118,6 +135,8 @@ class EmailPCAPAnalyzer:
                 'ai_summary': ai_summary,
                 'findings': findings,
                 'risk': risk,
+                'cryptographic_state_assessment': crypto_assessment,
+                'evidence_based_assessment': evidence_assessment,
                 'sessions': self._clean_sessions(),
                 'certificates': self.certificates,
                 'tls_handshakes': self.tls_handshakes

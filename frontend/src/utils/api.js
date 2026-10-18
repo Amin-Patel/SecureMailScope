@@ -202,4 +202,40 @@ export async function deleteAnalysesBatch(captureIds) {
   }
 }
 
+/**
+ * Retrieve the Evidence Provenance Graph for a given capture ID.
+ * @param {string} captureId The capture ID to fetch provenance for.
+ * @returns {Promise<Object>} Full provenance graph payload with nodes, edges, metrics, and traceability index.
+ */
+export async function getProvenanceGraph(captureId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/provenance`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Retrieve detailed entity forensic inspection data for a specific provenance node.
+ * @param {string} captureId The capture ID.
+ * @param {string} nodeId The node ID.
+ * @returns {Promise<Object>} Forensic details, incoming/outgoing relationships, and upstream/downstream links.
+ */
+export async function getProvenanceNodeDetail(captureId, nodeId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/provenance/node/${encodeURIComponent(nodeId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+
 

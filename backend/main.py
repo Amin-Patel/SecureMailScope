@@ -27,6 +27,9 @@ from fastapi.responses import JSONResponse, HTMLResponse, Response
 # Import analysis pipeline & reporting engine
 from app.core.pcap_analyzer import EmailPCAPAnalyzer
 from app.services.report_generator import ReportGenerator
+from app.services.provenance_service import ProvenanceGraphBuilder
+from app.core.crypto_state_engine import CryptographicStateEngine
+from app.core.evidence_assessment_engine import EvidenceAssessmentEngine
 
 # ΓöÇΓöÇΓöÇ APP SETUP ΓöÇΓöÇΓöÇ
 app = FastAPI(
@@ -45,9 +48,10 @@ app.add_middleware(
 )
 
 # ΓöÇΓöÇΓöÇ DIRECTORIES ΓöÇΓöÇΓöÇ
-UPLOAD_DIR = Path("uploads")
-RESULTS_DIR = Path("results")
-TEST_DATA_DIR = Path("test-data")
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploads" if (BASE_DIR / "uploads").exists() else Path("uploads")
+RESULTS_DIR = BASE_DIR / "results" if (BASE_DIR / "results").exists() else Path("results")
+TEST_DATA_DIR = BASE_DIR / "test-data" if (BASE_DIR / "test-data").exists() else Path("test-data")
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -174,13 +178,99 @@ async def load_demo_sample(sample_id: str):
 # ΓöÇΓöÇΓöÇ 4. RETRIEVE STORED RESULTS ΓöÇΓöÇΓöÇ
 @app.get("/api/analysis/{capture_id}/results")
 async def get_results(capture_id: str):
-    """Retrieve existing analysis results by capture_id."""
+    """Retrieve existing analysis results by capture_id with cryptographic state reasoning."""
     results_file = RESULTS_DIR / f"{capture_id}.json"
     if not results_file.exists():
         raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
 
     with open(results_file, "r") as f:
-        return JSONResponse(content=json.load(f))
+        data = json.load(f)
+
+    # Ensure cryptographic_state_assessment is populated
+    if "cryptographic_state_assessment" not in data or not data["cryptographic_state_assessment"]:
+        try:
+            engine = CryptographicStateEngine(data)
+            assessment = engine.evaluate()
+            data["cryptographic_state_assessment"] = assessment
+            if "summary" in data and isinstance(data["summary"], dict):
+                data["summary"]["cryptographic_state"] = assessment["overall_state"]
+                data["summary"]["cryptographic_state_label"] = assessment["overall_state_label"]
+            with open(results_file, "w") as f_out:
+                json.dump(data, f_out, indent=2, default=str)
+        except Exception as e:
+            print(f"Error deriving cryptographic state assessment: {e}")
+
+    # Ensure evidence_based_assessment is populated (USP 5)
+    if "evidence_based_assessment" not in data or not data["evidence_based_assessment"]:
+        try:
+            ev_engine = EvidenceAssessmentEngine(data)
+            data["evidence_based_assessment"] = ev_engine.evaluate()
+            with open(results_file, "w") as f_out:
+                json.dump(data, f_out, indent=2, default=str)
+        except Exception as e:
+            print(f"Error deriving evidence-based assessment: {e}")
+
+    return JSONResponse(content=data)
+
+
+# ─── 4B. EVIDENCE PROVENANCE GRAPH ───
+@app.get("/api/analysis/{capture_id}/provenance")
+async def get_provenance_graph(capture_id: str):
+    """
+    Retrieve the complete Evidence Provenance Graph for a specific analysis.
+    Provides full bidirectional traceability from capture artifacts and network packets
+    through protocol sessions, handshakes, certificates, and analysis rules to security findings.
+    """
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    try:
+        with open(results_file, "r") as f:
+            data = json.load(f)
+        builder = ProvenanceGraphBuilder(data)
+        graph = builder.build()
+        return JSONResponse(content=graph)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate provenance graph: {str(e)}")
+
+
+@app.get("/api/analysis/{capture_id}/provenance/node/{node_id}")
+async def get_provenance_node_detail(capture_id: str, node_id: str):
+    """
+    Retrieve forensic details for a specific provenance entity, including incoming and outgoing
+    relationships, upstream evidence, downstream findings, and assessment states.
+    """
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    try:
+        with open(results_file, "r") as f:
+            data = json.load(f)
+        builder = ProvenanceGraphBuilder(data)
+        graph = builder.build()
+
+        node = next((n for n in graph["nodes"] if n["id"] == node_id), None)
+        if not node:
+            raise HTTPException(status_code=404, detail=f"Entity '{node_id}' not found in analysis {capture_id}")
+
+        incoming = [e for e in graph["edges"] if e["target"] == node_id]
+        outgoing = [e for e in graph["edges"] if e["source"] == node_id]
+
+        return JSONResponse(content={
+            "node": node,
+            "incoming_relationships": incoming,
+            "outgoing_relationships": outgoing,
+            "traceability": {
+                "upstream_evidence": graph["traceability_index"]["finding_to_evidence"].get(node_id.replace("finding:", ""), []),
+                "downstream_findings": graph["traceability_index"]["evidence_to_findings"].get(node_id, [])
+            }
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve entity details: {str(e)}")
 
 
 # ΓöÇΓöÇΓöÇ 5. FORENSIC REPORT GENERATION ΓöÇΓöÇΓöÇ
@@ -215,7 +305,7 @@ async def list_all_analyses():
                 data = json.load(file)
                 analyses.append({
                     "capture_id": data.get("capture_id"),
-                    "filename": data.get("original_filename"),
+                    "filename": data.get("original_filename") or data.get("filename") or f.name,
                     "risk_score": data.get("summary", {}).get("risk_score"),
                     "risk_level": data.get("summary", {}).get("risk_level"),
                     "timestamp": data.get("upload_timestamp"),
@@ -223,6 +313,8 @@ async def list_all_analyses():
                 })
         except:
             continue
+    # Sort newest first
+    analyses.sort(key=lambda x: str(x.get("timestamp") or ""), reverse=True)
     return {"analyses": analyses, "total": len(analyses)}
 
 

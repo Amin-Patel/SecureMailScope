@@ -453,7 +453,7 @@ export function Dashboard() {
           <DashboardCharts jobId={activeJobId} />
 
           {/* Interactive Session Timeline */}
-          <SessionTimeline sessions={rawResults?.sessions || []} />
+          <SessionTimeline sessions={rawResults?.sessions || []} captureId={activeJobId} />
 
           {/* Security Findings Section with AI Explanation & Modal trigger */}
           <div className="glass-card">

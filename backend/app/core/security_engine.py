@@ -3,7 +3,7 @@ Security Rule Engine for SecureMailScope
 Deterministic security checks against extracted PCAP data
 """
 
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 
 # Known weak cipher suite keywords
@@ -64,10 +64,12 @@ class SecurityEngine:
 
     def _add_finding(self, severity: str, finding_type: str,
                      title: str, description: str,
-                     evidence: str, remediation: str):
-        """Add a finding to the list"""
+                     evidence: str, remediation: str,
+                     source_refs: Optional[List[str]] = None,
+                     rule_id: Optional[str] = None):
+        """Add a finding to the list with optional structured provenance source_refs"""
         self.finding_counter += 1
-        self.findings.append({
+        finding = {
             'id': f"SMS-{self.finding_counter:03d}",
             'severity': severity,
             'type': finding_type,
@@ -75,7 +77,12 @@ class SecurityEngine:
             'description': description,
             'evidence': evidence,
             'remediation': remediation
-        })
+        }
+        if source_refs:
+            finding['source_refs'] = source_refs
+        if rule_id:
+            finding['rule_id'] = rule_id
+        self.findings.append(finding)
 
     # ─── CHECK 1: PLAINTEXT PROTOCOLS ───
     def check_plaintext_protocols(self):
