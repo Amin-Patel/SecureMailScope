@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ============================================================
 # SecureMailScope — Docker Compose
 # Production deployment: FastAPI backend + optional nginx frontend
