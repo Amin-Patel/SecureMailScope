@@ -1,0 +1,134 @@
+{
+  "comparison_id": "cmp_9a4a19d650",
+  "baseline_id": "nist_sp800_52r2",
+  "baseline_name": "NIST SP 800-52 Rev 2 Federal Baseline",
+  "baseline_version": "1.0",
+  "capture_id": "test_sih_demo",
+  "filename": "SecureMailScope_SIHDemo.pcap",
+  "target_endpoint": "198.51.100.10:25:None",
+  "compared_at": "2026-10-20T00:09:36.121235",
+  "overall_status": "SECURITY_DEGRADATION_DRIFT",
+  "badge_color": "#ef4444",
+  "summary_description": "Critical security drift detected: 4 property/policy violation(s) relative to NIST SP 800-52 Rev 2 Federal Baseline.",
+  "metrics": {
+    "total_properties": 6,
+    "unchanged_count": 2,
+    "changed_count": 4,
+    "weakened_count": 4,
+    "strengthened_count": 0
+  },
+  "property_diffs": [
+    {
+      "property": "TLS Protocol Versions",
+      "baseline_value": [
+        "TLS 1.2",
+        "TLS 1.3"
+      ],
+      "current_value": [
+        "SSL 3.0",
+        "TLS 1.2"
+      ],
+      "diff_type": "CHANGED",
+      "security_significance": "POLICY_VIOLATION",
+      "explanation": "Observed deprecated/disallowed protocol version(s): SSL 3.0 (POODLE/BEAST risk).",
+      "evidence_ref": "handshakes"
+    },
+    {
+      "property": "Cryptographic Cipher Suites",
+      "baseline_value": "Modern AEAD Ciphers",
+      "current_value": [
+        "0x0003",
+        "0x0004",
+        "0x0005"
+      ],
+      "diff_type": "UNCHANGED",
+      "security_significance": "POLICY_COMPLIANT",
+      "explanation": "All observed cipher suites satisfy approved baseline cipher standards.",
+      "evidence_ref": "handshakes"
+    },
+    {
+      "property": "RSA Public Key Length",
+      "baseline_value": ">=2048-bit",
+      "current_value": "1024-bit",
+      "diff_type": "CHANGED",
+      "security_significance": "POLICY_VIOLATION",
+      "explanation": "Sub-standard RSA key length (1024-bit) falls below baseline threshold (2048-bit). Factorization risk.",
+      "evidence_ref": "certificates"
+    },
+    {
+      "property": "Certificate Expiration Status",
+      "baseline_value": "Active valid certificate within notBefore/notAfter interval",
+      "current_value": "Expired certificate(s) presented",
+      "diff_type": "CHANGED",
+      "security_significance": "POLICY_VIOLATION",
+      "explanation": "Presented certificate has expired, breaking trust chains.",
+      "evidence_ref": "certificates"
+    },
+    {
+      "property": "Public CA Trust Root",
+      "baseline_value": "CA-signed certificate",
+      "current_value": "Self-signed certificate presented",
+      "diff_type": "CHANGED",
+      "security_significance": "POLICY_VIOLATION",
+      "explanation": "Self-signed certificate cannot be authenticated via public trust roots.",
+      "evidence_ref": "certificates"
+    },
+    {
+      "property": "STARTTLS Negotiation Enforcement",
+      "baseline_value": "Mandatory STARTTLS Upgrade",
+      "current_value": "UPGRADED_SUCCESSFUL",
+      "diff_type": "UNCHANGED",
+      "security_significance": "POLICY_COMPLIANT",
+      "explanation": "STARTTLS negotiation successfully established transport encryption.",
+      "evidence_ref": "sessions"
+    }
+  ],
+  "observed_snapshot": {
+    "capture_id": "test_sih_demo",
+    "primary_endpoint": "198.51.100.10:25:None",
+    "observed_tls_versions": [
+      "SSL 3.0",
+      "TLS 1.2"
+    ],
+    "lowest_tls_version": "SSL 3.0",
+    "observed_ciphers": [
+      "0x0003",
+      "0x0004",
+      "0x0005",
+      "0x0006",
+      "0x0009",
+      "0x000a",
+      "0x0012",
+      "0x0013",
+      "0x0015",
+      "0x0016",
+      "0x002f",
+      "0x0032",
+      "0x0033",
+      "0x0035",
+      "0x0038",
+      "0x0039",
+      "0x0062",
+      "0x0064",
+      "0x009c",
+      "0xc02f",
+      "0xfefe",
+      "0xfeff"
+    ],
+    "lowest_rsa_key_size": 1024,
+    "lowest_ec_key_size": null,
+    "cert_fingerprints": [],
+    "cert_subjects": [
+      "1.2.840.113549.1.9.1=www@snakeoil.dom,CN=www.snakeoil.dom,OU=Webserver Team,O=Snake Oil\\, Ltd,L=Snake Town,ST=Snake Desert,C=XY",
+      "CN=smtp-modern.demo.local,O=SecureMailScope Demo,C=IN",
+      "CN=smtp-expired.demo.local,O=SecureMailScope Demo,C=IN",
+      "CN=smtp-future.demo.local,O=SecureMailScope Demo,C=IN"
+    ],
+    "has_expired_cert": true,
+    "has_self_signed_cert": true,
+    "starttls_status": "UPGRADED_SUCCESSFUL",
+    "is_encrypted": true,
+    "plaintext_packets": 68,
+    "total_packets": 112
+  }
+}

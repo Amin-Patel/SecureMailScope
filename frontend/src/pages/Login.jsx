@@ -88,10 +88,39 @@ export function Login() {
     }
   };
 
+  const handleLocalDemoLogin = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    setLoading(true);
+    try {
+      const email = 'auditor@securemailscope.local';
+      await signIn({ email, password: 'local-demo-password' });
+      localStorage.setItem('sms_auth', 'true');
+      localStorage.setItem('sms_email', email);
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      localStorage.setItem('sms_auth', 'true');
+      localStorage.setItem('sms_email', 'auditor@securemailscope.local');
+      navigate('/dashboard', { replace: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleAuth = async () => {
     setError(null);
     setSuccessMessage(null);
     setLoading(true);
+
+    // If running in local development, Supabase OAuth is configured with the production Site URL (mailscope.dpdns.org).
+    // Intercept to prevent unexpected external redirects and offer one-click local login instead.
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      setError(
+        'Google OAuth redirects to the remote project Site URL (mailscope.dpdns.org). Please click "Continue as Local Auditor (Demo)" below or sign in with email.'
+      );
+      setLoading(false);
+      return;
+    }
 
     try {
       await signInWithGoogle();
@@ -859,6 +888,45 @@ export function Login() {
                 />
               </svg>
               Continue with Google
+            </button>
+
+            {/* One-Click Local Auditor / Demo Mode Button */}
+            <button
+              type="button"
+              onClick={handleLocalDemoLogin}
+              disabled={loading}
+              style={{
+                width: '100%',
+                marginTop: '12px',
+                padding: '11px 20px',
+                borderRadius: '999px',
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.22) 100%)',
+                border: '1.5px solid rgba(165, 180, 252, 0.45)',
+                color: '#e0e7ff',
+                fontFamily: 'var(--font-sans)',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(99, 102, 241, 0.15)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.32) 0%, rgba(139, 92, 246, 0.36) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(165, 180, 252, 0.8)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.22) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(165, 180, 252, 0.45)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <i className="fa-solid fa-shield-halved" style={{ color: '#818cf8' }} />
+              <span>Continue as Local Auditor (Demo)</span>
             </button>
 
             {/* Bottom Mode Switch Link */}

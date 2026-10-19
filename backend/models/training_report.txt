@@ -1,0 +1,52 @@
+SecureMailScope ML Training Report
+============================================================
+Total unique sessions: 3528 (synthetic: 3528, real: 0, duplicates removed: 0)
+Label distribution: {'CRITICAL': 2418, 'LOW': 32, 'HIGH': 998, 'MEDIUM': 80}
+Train/test split: 2646/882 (stratified, seed=42)
+
+Held-out test accuracy: 0.9921
+
+Note on accuracy: labels are a deterministic function of the
+features (rule-engine distillation, not noisy real-world
+ground truth), so near-1.0 held-out accuracy is expected and is
+not itself a leakage signal -- the leakage guard here is the
+duplicate-row removal above, which runs before the train/test
+split so no row appears in both.
+
+Classification report (held-out test set):
+              precision    recall  f1-score   support
+
+    CRITICAL       1.00      1.00      1.00       605
+        HIGH       1.00      0.98      0.99       249
+         LOW       0.80      1.00      0.89         8
+      MEDIUM       0.80      1.00      0.89        20
+
+    accuracy                           0.99       882
+   macro avg       0.90      0.99      0.94       882
+weighted avg       0.99      0.99      0.99       882
+
+Feature importances:
+  cipher_weak: 0.1135
+  has_certificate: 0.1064
+  cert_self_signed: 0.0695
+  tls_version_tls11: 0.0687
+  tls_version_ssl3: 0.0655
+  tls_version_tls10: 0.0623
+  cert_invalid_eku: 0.0593
+  cert_key_size_adequate: 0.0538
+  cert_expired: 0.0531
+  cert_chain_order_invalid: 0.0508
+  cert_signature_weak: 0.0439
+  tls_version_tls13: 0.0433
+  cert_invalid_basic_constraints: 0.0351
+  tls_version_tls12: 0.0333
+  cert_signature_invalid: 0.0322
+  cert_hostname_mismatch: 0.0223
+  cert_untrusted_ca: 0.0188
+  cert_not_yet_valid: 0.0173
+  cipher_aead: 0.0124
+  cipher_unknown: 0.0112
+  cipher_forward_secret: 0.0099
+  starttls_used: 0.0082
+  tls_version_none: 0.0051
+  plaintext_session: 0.0042

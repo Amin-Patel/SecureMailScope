@@ -237,5 +237,197 @@ export async function getProvenanceNodeDetail(captureId, nodeId) {
   }
 }
 
+/**
+ * Retrieve Historical Cryptographic Forensics event timeline and host history (USP 1).
+ * @param {string} captureId 
+ * @returns {Promise<Object>} Reconstructed event timeline, sessions, and temporal risk regressions.
+ */
+export async function getForensics(captureId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/forensics`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * List all available baselines (USP 6).
+ * @returns {Promise<Object>} List of baselines.
+ */
+export async function getBaselines() {
+  try {
+    const response = await apiClient.get('/baselines');
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Create an empirical baseline from an analyzed capture (USP 6).
+ * @param {Object} data { capture_id, name, description, target_endpoint }
+ * @returns {Promise<Object>} Created baseline record.
+ */
+export async function createBaseline(data) {
+  try {
+    const response = await apiClient.post('/baselines', data);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Retrieve a specific baseline by ID (USP 6).
+ * @param {string} baselineId 
+ * @returns {Promise<Object>}
+ */
+export async function getBaseline(baselineId) {
+  try {
+    const response = await apiClient.get(`/baselines/${encodeURIComponent(baselineId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Delete a custom baseline by ID (USP 6).
+ * @param {string} baselineId 
+ * @returns {Promise<Object>}
+ */
+export async function deleteBaseline(baselineId) {
+  try {
+    const response = await apiClient.delete(`/baselines/${encodeURIComponent(baselineId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Compare an analyzed capture against a reference baseline (USP 6).
+ * @param {Object} data { capture_id, baseline_id, target_endpoint }
+ * @returns {Promise<Object>} Comparison record with property diffs and security significance.
+ */
+export async function compareDrift(data) {
+  try {
+    const response = await apiClient.post('/drift/compare', data);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * List historical drift comparisons (USP 6).
+ * @param {string} [captureId] Optional capture filter
+ * @returns {Promise<Object>}
+ */
+export async function getDriftHistory(captureId) {
+  try {
+    const url = captureId ? `/drift/history?capture_id=${encodeURIComponent(captureId)}` : '/drift/history';
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Helper to trigger a real file download in the browser from a binary Blob.
+ */
+function triggerBlobDownload(blobData, filename) {
+  const url = window.URL.createObjectURL(new Blob([blobData], { type: 'application/pdf' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Download Report A: Historical Cryptographic Forensics PDF Report.
+ * @param {string} captureId 
+ */
+export async function downloadForensicReportPdf(captureId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/report/pdf`, {
+      responseType: 'blob'
+    });
+    triggerBlobDownload(response.data, `SecureMailScope_Forensic_Report_${captureId}.pdf`);
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Download Report B: Cryptographic Drift & Baseline Comparison PDF Report.
+ * @param {string} comparisonId 
+ */
+export async function downloadDriftReportPdf(comparisonId) {
+  try {
+    const response = await apiClient.get(`/drift/comparison/${encodeURIComponent(comparisonId)}/report/pdf`, {
+      responseType: 'blob'
+    });
+    triggerBlobDownload(response.data, `SecureMailScope_Drift_Report_${comparisonId}.pdf`);
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Download Report C: Combined Cryptographic Investigation PDF Report.
+ * @param {string} captureId 
+ * @param {string} comparisonId 
+ */
+export async function downloadCombinedReportPdf(captureId, comparisonId) {
+  try {
+    const response = await apiClient.post('/reports/combined/pdf', {
+      capture_id: captureId,
+      comparison_id: comparisonId
+    }, {
+      responseType: 'blob'
+    });
+    triggerBlobDownload(response.data, `SecureMailScope_Combined_Report_${captureId}_${comparisonId}.pdf`);
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+
 
 

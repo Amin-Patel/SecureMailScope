@@ -31,6 +31,9 @@ MIN_KEY_SIZES = {
     'dhe': 2048,
 }
 
+# Minimum letter grade floors per severity level for fused risk evaluation
+LEVEL_MIN_GRADE = {'MEDIUM': 'C', 'HIGH': 'D', 'CRITICAL': 'F'}
+
 
 class SecurityEngine:
     """Run deterministic security checks on PCAP analysis data"""
@@ -266,7 +269,7 @@ class SecurityEngine:
             key_algo = cert.get('public_key_algorithm', '').lower()
             key_size = cert.get('key_size', 0)
 
-            if key_size > 0:
+            if key_size and key_size > 0:
                 for algo, min_size in MIN_KEY_SIZES.items():
                     if algo in key_algo and key_size < min_size:
                         weak_keys.append({
@@ -350,8 +353,6 @@ class SecurityEngine:
     # ─── CHECK 10: MISSING STARTTLS ───
     def check_missing_starttls(self):
         sessions = self.data.get('sessions', [])
-        tls_handshakes = self.data.get('tls_handshakes', [])
-
         # Check for plaintext SMTP sessions without any TLS upgrade
         plaintext_smtp = [
             s for s in sessions
@@ -359,9 +360,11 @@ class SecurityEngine:
             and not s.get('encrypted')
         ]
 
-        has_any_tls = len(tls_handshakes) > 0
-
-        if plaintext_smtp and not has_any_tls:
+        if plaintext_smtp:
+            sess_details = ", ".join(
+                f"{s.get('id', 'unknown')} ({s.get('src', '')}->{s.get('dst', '')})"
+                for s in plaintext_smtp
+            )
             self._add_finding(
                 severity='HIGH',
                 finding_type='missing_starttls',
@@ -369,11 +372,11 @@ class SecurityEngine:
                 description=(
                     f"{len(plaintext_smtp)} plaintext SMTP session(s) detected "
                     f"with no TLS upgrade (STARTTLS). Email is transmitted "
-                    f"entirely in cleartext."
+                    f"entirely in cleartext: {sess_details}."
                 ),
                 evidence=(
-                    f"{len(plaintext_smtp)} SMTP sessions on port 25/587 "
-                    f"without STARTTLS"
+                    f"{len(plaintext_smtp)} SMTP session(s) on port 25/587 "
+                    f"without STARTTLS ({sess_details})"
                 ),
                 remediation=(
                     "1. Enable STARTTLS on SMTP server\n"

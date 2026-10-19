@@ -6,11 +6,17 @@ Uses tshark directly for maximum speed and FastAPI compatibility
 
 import subprocess
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Any
 from datetime import datetime
 import json
 import hashlib
 import sys
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.tshark_helper import TSharkHelper
@@ -18,7 +24,16 @@ from utils.cert_analyzer import CertificateAnalyzer
 from core.security_engine import SecurityEngine
 from core.crypto_state_engine import CryptographicStateEngine
 from core.evidence_assessment_engine import EvidenceAssessmentEngine
+from core.protocol_state_machine import (
+    FlowStateMachine, ProtocolState, ProtocolEvent, ProtocolEventType
+)
 from services.gemini_service import GeminiSecurityAssistant
+try:
+    from services.ml_risk_service import assess_sessions, fuse_risk_level
+    HAS_ML_ENGINE = True
+except Exception as _ml_err:
+    HAS_ML_ENGINE = False
+    print(f"[*] ML risk service notice: {_ml_err}")
 
 
 class EmailPCAPAnalyzer:
@@ -41,6 +56,7 @@ class EmailPCAPAnalyzer:
         self.sessions = []
         self.tls_handshakes = []
         self.certificates = []
+        self.flow_state_machines: Dict[int, FlowStateMachine] = {}
         self.tshark = TSharkHelper()
         self.ai_assistant = GeminiSecurityAssistant()
 
@@ -82,17 +98,33 @@ class EmailPCAPAnalyzer:
 
             # Step 5: Security checks
             print("[5/7] Running security checks...")
+            all_transitions = []
+            for fsm in self.flow_state_machines.values():
+                all_transitions.extend(fsm.transition_history)
+
             analysis_data = {
                 'summary': self._generate_summary(),
                 'sessions': self.sessions,
                 'tls_handshakes': self.tls_handshakes,
-                'certificates': self.certificates
+                'certificates': self.certificates,
+                'flow_state_transitions': all_transitions
             }
             engine = SecurityEngine(analysis_data)
             findings = engine.run_all_checks()
             risk = engine.calculate_risk_score()
             print(f"       Found {len(findings)} security issues")
             print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
+
+            # Step 5b: ML Risk Classification & Anomaly Detection (USP 5)
+            ml_assessment = None
+            if HAS_ML_ENGINE:
+                try:
+                    ml_assessment = assess_sessions(self.tls_handshakes, self.certificates)
+                    if ml_assessment:
+                        risk = fuse_risk_level(risk, ml_assessment)
+                        print(f"       ML Risk Assessment: evaluated {len(ml_assessment.get('sessions', []))} session(s), fused risk: {risk.get('fused_risk_level', risk['risk_level'])}")
+                except Exception as _e:
+                    print(f"       [!] ML risk assessment bypassed: {_e}")
 
             # Step 6: AI-Powered Intelligence Enrichment
             print("[6/7] Generating AI Explanations & Threat Intelligence...")
@@ -135,8 +167,10 @@ class EmailPCAPAnalyzer:
                 'ai_summary': ai_summary,
                 'findings': findings,
                 'risk': risk,
+                'ml_assessment': ml_assessment,
                 'cryptographic_state_assessment': crypto_assessment,
                 'evidence_based_assessment': evidence_assessment,
+                'flow_state_transitions': all_transitions,
                 'sessions': self._clean_sessions(),
                 'certificates': self.certificates,
                 'tls_handshakes': self.tls_handshakes
@@ -156,7 +190,7 @@ class EmailPCAPAnalyzer:
             }
 
     def _extract_email_packets(self):
-        """Extract email-related packets using tshark (fast & async-safe)"""
+        """Extract email-related packets using tshark (fast & async-safe) and process protocol state events"""
         filter_expr = (
             "tcp.port==25 || tcp.port==587 || tcp.port==465 || "
             "tcp.port==2525 || tcp.port==110 || tcp.port==995 || "
@@ -174,7 +208,12 @@ class EmailPCAPAnalyzer:
             '-e', 'ip.dst',
             '-e', 'tcp.srcport',
             '-e', 'tcp.dstport',
-            '-e', 'frame.len'
+            '-e', 'tcp.stream',
+            '-e', 'frame.len',
+            '-e', 'smtp.req.command',
+            '-e', 'smtp.response.code',
+            '-e', 'tls.record.content_type',
+            '-e', 'tls.handshake.type'
         ]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -198,18 +237,121 @@ class EmailPCAPAnalyzer:
                 elif dst_port in self.EMAIL_PORTS:
                     protocol = self.EMAIL_PORTS[dst_port]
 
-                if protocol:
-                    self.email_packets.append({
-                        'number': layers.get('frame.number', [''])[0],
-                        'timestamp': layers.get('frame.time', [''])[0],
-                        'src': layers.get('ip.src', [''])[0] or 'N/A',
-                        'dst': layers.get('ip.dst', [''])[0] or 'N/A',
-                        'src_port': src_port,
-                        'dst_port': dst_port,
-                        'protocol': protocol,
-                        'length': int(layers.get('frame.len', ['0'])[0]),
-                        'encrypted': protocol in ['SMTPS', 'IMAPS', 'POP3S']
-                    })
+                if not protocol:
+                    continue
+
+                frame_num_raw = layers.get('frame.number', ['0'])[0]
+                frame_num = int(frame_num_raw) if frame_num_raw.isdigit() else 0
+                ts = layers.get('frame.time', [''])[0]
+                src_ip = layers.get('ip.src', [''])[0] or 'N/A'
+                dst_ip = layers.get('ip.dst', [''])[0] or 'N/A'
+                stream_id_raw = layers.get('tcp.stream', ['0'])[0]
+                stream_id = int(stream_id_raw) if stream_id_raw.isdigit() else 0
+
+                # Initialize per-flow state machine if not present
+                if stream_id not in self.flow_state_machines:
+                    flow_id = f"{src_ip}:{src_port}->{dst_ip}:{dst_port}"
+                    self.flow_state_machines[stream_id] = FlowStateMachine(
+                        stream_id=stream_id,
+                        flow_id=flow_id,
+                        protocol=protocol
+                    )
+                fsm = self.flow_state_machines[stream_id]
+
+                # Extract protocol signals
+                smtp_cmds = layers.get('smtp.req.command', [])
+                smtp_codes = layers.get('smtp.response.code', [])
+                tls_ct = layers.get('tls.record.content_type', [])
+                tls_hs = layers.get('tls.handshake.type', [])
+
+                # Process SMTP command events
+                if smtp_cmds:
+                    for cmd in smtp_cmds:
+                        cu = cmd.upper()
+                        if cu.startswith('STAR'):
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.STARTTLS_CMD, data="STARTTLS"
+                            ))
+                        elif cu in ('EHLO', 'HELO'):
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.CLIENT_EHLO, data=cmd
+                            ))
+                        else:
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.PLAINTEXT_COMMAND, data=cmd
+                            ))
+
+                # Process SMTP response events
+                if smtp_codes:
+                    for code in smtp_codes:
+                        if code == '220':
+                            if fsm.current_state == ProtocolState.STARTTLS_REQUESTED:
+                                fsm.process_event(ProtocolEvent(
+                                    frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                    event_type=ProtocolEventType.STARTTLS_RESP_220, data="220 Ready to start TLS"
+                                ))
+                            else:
+                                fsm.process_event(ProtocolEvent(
+                                    frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                    event_type=ProtocolEventType.SERVER_BANNER, data="220 Banner"
+                                ))
+                        elif code in ('454', '501', '500') and fsm.current_state == ProtocolState.STARTTLS_REQUESTED:
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.STARTTLS_RESP_ERR, data=f"{code} Error"
+                            ))
+                        else:
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.PLAINTEXT_RESPONSE, data=code
+                            ))
+
+                # Process TLS records
+                if tls_ct:
+                    if '22' in tls_ct:
+                        if '1' in tls_hs:
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.TLS_CLIENT_HELLO, data="TLS ClientHello"
+                            ))
+                        elif any(h in ('2', '11', '14') for h in tls_hs):
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.TLS_SERVER_HELLO, data="TLS ServerHello"
+                            ))
+                        else:
+                            fsm.process_event(ProtocolEvent(
+                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                                event_type=ProtocolEventType.TLS_HANDSHAKE_PROGRESS, data="TLS Handshake Progress"
+                            ))
+                    if '23' in tls_ct:
+                        fsm.process_event(ProtocolEvent(
+                            frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                            event_type=ProtocolEventType.TLS_APPLICATION_DATA, data="TLS Application Data"
+                        ))
+
+                # Evidence-based packet encryption status
+                is_encrypted = (
+                    bool(tls_ct) or
+                    protocol in ['SMTPS', 'IMAPS', 'POP3S'] or
+                    (fsm.current_state == ProtocolState.TLS_ESTABLISHED and not smtp_cmds and not smtp_codes)
+                )
+
+                self.email_packets.append({
+                    'number': frame_num_raw,
+                    'timestamp': ts,
+                    'src': src_ip,
+                    'dst': dst_ip,
+                    'src_port': src_port,
+                    'dst_port': dst_port,
+                    'stream_id': stream_id,
+                    'protocol': protocol,
+                    'length': int(layers.get('frame.len', ['0'])[0]),
+                    'encrypted': is_encrypted
+                })
         except FileNotFoundError:
             raise RuntimeError(
                 "TShark executable was not found. Install Wireshark with TShark support or configure the TShark executable path."
@@ -218,7 +360,7 @@ class EmailPCAPAnalyzer:
             print(f"       [!] Packet extraction error: {e}")
 
     def _reconstruct_sessions(self):
-        """Group packets into sessions"""
+        """Group packets into sessions and track stream mappings"""
         session_map = {}
 
         for pkt in self.email_packets:
@@ -240,16 +382,18 @@ class EmailPCAPAnalyzer:
                     'end_time': pkt['timestamp'],
                     'packet_count': 0,
                     'encrypted': pkt['encrypted'],
+                    'stream_ids': set(),
                     'tls_info': None
                 }
 
             session_map[key]['packet_count'] += 1
             session_map[key]['end_time'] = pkt['timestamp']
+            session_map[key]['stream_ids'].add(pkt.get('stream_id', 0))
 
         self.sessions = list(session_map.values())
 
     def _link_tls_to_sessions(self):
-        """Link TLS data to sessions"""
+        """Link TLS handshake telemetry and flow state machine posture to sessions"""
         for session in self.sessions:
             matching = [
                 hs for hs in self.tls_handshakes
@@ -270,8 +414,38 @@ class EmailPCAPAnalyzer:
                     'cipher_suites': list(set(ciphers))
                 }
 
+            # Consult FlowStateMachine for each stream in this session
+            stream_ids = session.get('stream_ids', set())
+            session_fsms = [self.flow_state_machines[sid] for sid in stream_ids if sid in self.flow_state_machines]
+            
+            is_encrypted = session.get('encrypted', False)
+            starttls_status = "NOT_ATTEMPTED"
+            history = []
+
+            for fsm in session_fsms:
+                posture = fsm.get_cryptographic_posture()
+                history.extend(posture.get('transition_history', []))
+                if posture.get('is_encrypted'):
+                    is_encrypted = True
+                if posture.get('starttls_status') == 'UPGRADED_SUCCESSFUL':
+                    starttls_status = 'UPGRADED_SUCCESSFUL'
+                elif starttls_status != 'UPGRADED_SUCCESSFUL' and posture.get('starttls_status') in ('REJECTED', 'INCOMPLETE'):
+                    starttls_status = posture.get('starttls_status')
+
+            if session['protocol'] in ['SMTPS', 'IMAPS', 'POP3S']:
+                is_encrypted = True
+                starttls_status = "NOT_APPLICABLE"
+            elif matching and not is_encrypted:
+                is_encrypted = True
+                if starttls_status == "NOT_ATTEMPTED":
+                    starttls_status = "UPGRADED_SUCCESSFUL"
+
+            session['encrypted'] = is_encrypted
+            session['starttls_status'] = starttls_status
+            session['state_history'] = history
+
     def _clean_sessions(self):
-        """Return sessions without raw packet data"""
+        """Return sessions without internal raw packet structures"""
         clean = []
         for s in self.sessions:
             clean.append({
@@ -281,6 +455,8 @@ class EmailPCAPAnalyzer:
                 'dst': f"{s['dst']}:{s['dst_port']}",
                 'packet_count': s['packet_count'],
                 'encrypted': s['encrypted'],
+                'starttls_status': s.get('starttls_status', 'NOT_ATTEMPTED'),
+                'state_history': s.get('state_history', []),
                 'tls_versions': (
                     s['tls_info']['versions'] if s.get('tls_info') else []
                 )

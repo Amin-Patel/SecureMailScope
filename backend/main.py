@@ -18,7 +18,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from typing import List
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,12 @@ from app.services.report_generator import ReportGenerator
 from app.services.provenance_service import ProvenanceGraphBuilder
 from app.core.crypto_state_engine import CryptographicStateEngine
 from app.core.evidence_assessment_engine import EvidenceAssessmentEngine
+from app.core.forensics_engine import HistoricalForensicsEngine
+from app.core.baseline_drift_engine import BaselineDriftEngine
+from app.services.pdf_report_generator import PDFReportGenerator
+
+# Initialize Drift & Baseline Engine
+drift_engine = BaselineDriftEngine()
 
 # ΓöÇΓöÇΓöÇ APP SETUP ΓöÇΓöÇΓöÇ
 app = FastAPI(
@@ -210,6 +216,16 @@ async def get_results(capture_id: str):
         except Exception as e:
             print(f"Error deriving evidence-based assessment: {e}")
 
+    # Ensure forensic_reconstruction is populated (USP 1)
+    if "forensic_reconstruction" not in data or not data["forensic_reconstruction"]:
+        try:
+            f_engine = HistoricalForensicsEngine(data)
+            data["forensic_reconstruction"] = f_engine.reconstruct()
+            with open(results_file, "w") as f_out:
+                json.dump(data, f_out, indent=2, default=str)
+        except Exception as e:
+            print(f"Error deriving forensic reconstruction: {e}")
+
     return JSONResponse(content=data)
 
 
@@ -363,6 +379,250 @@ async def delete_analyses_batch(req: BatchDeleteRequest):
     }
 
 
+# ─── 5B. PROFESSIONAL PDF REPORT GENERATION (REPORTS A, B, C) ───
+@app.get("/api/analysis/{capture_id}/report/pdf")
+async def export_forensic_report_pdf(capture_id: str):
+    """
+    Export Report A: Professional Historical Cryptographic Forensics PDF Report.
+    Generates publication-quality PDF document with formal cover page,
+    metadata, timeline, PKI certificates, findings, and ISO/IEC 27037 forensic boundaries.
+    """
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    forensic_data = data.get("forensic_reconstruction")
+    if not forensic_data:
+        try:
+            forensics_engine = HistoricalForensicsEngine(data)
+            forensic_data = forensics_engine.reconstruct()
+            data["forensic_reconstruction"] = forensic_data
+            with open(results_file, "w") as f_out:
+                json.dump(data, f_out, indent=2, default=str)
+        except Exception:
+            forensic_data = None
+
+    try:
+        pdf_bytes = PDFReportGenerator.generate_forensic_report_pdf(data, forensic_data)
+        safe_filename = f"SecureMailScope_Forensic_Report_{capture_id}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate forensic PDF report: {str(e)}")
+
+
+@app.get("/api/drift/comparison/{comparison_id}/report/pdf")
+async def export_drift_report_pdf(comparison_id: str):
+    """
+    Export Report B: Professional Cryptographic Drift & Baseline Comparison PDF Report.
+    """
+    comp = drift_engine.get_comparison(comparison_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail=f"Comparison not found: {comparison_id}")
+
+    try:
+        pdf_bytes = PDFReportGenerator.generate_drift_report_pdf(comp)
+        safe_filename = f"SecureMailScope_Drift_Report_{comparison_id}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate drift PDF report: {str(e)}")
+
+
+class CombinedReportRequest(BaseModel):
+    capture_id: str
+    comparison_id: str
+
+
+@app.post("/api/reports/combined/pdf")
+async def export_combined_report_pdf(req: CombinedReportRequest):
+    """
+    Export Report C: Professional Combined Cryptographic Investigation PDF Report.
+    Unifies forensic findings, session timelines, and drift matrix.
+    """
+    results_file = RESULTS_DIR / f"{req.capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {req.capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    comp = drift_engine.get_comparison(req.comparison_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail=f"Comparison not found: {req.comparison_id}")
+
+    # Validate compatibility: check if capture_id matches
+    if comp.get("capture_id") and comp.get("capture_id") != req.capture_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Incompatible report sources: Comparison {req.comparison_id} was generated for capture {comp.get('capture_id')}, not {req.capture_id}."
+        )
+
+    forensic_data = data.get("forensic_reconstruction")
+    if not forensic_data:
+        try:
+            forensics_engine = HistoricalForensicsEngine(data)
+            forensic_data = forensics_engine.reconstruct()
+        except Exception:
+            forensic_data = None
+
+    try:
+        pdf_bytes = PDFReportGenerator.generate_combined_report_pdf(data, forensic_data, comp)
+        safe_filename = f"SecureMailScope_Combined_Report_{req.capture_id}_{req.comparison_id}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate combined PDF report: {str(e)}")
+
+
+# ─── 8. USP 1: HISTORICAL CRYPTOGRAPHIC FORENSICS ───
+@app.get("/api/analysis/{capture_id}/forensics")
+async def get_forensic_timeline(capture_id: str):
+    """
+    USP 1: Historical Cryptographic Forensics.
+    Returns reconstructed chronological event timelines across sessions,
+    endpoint correlation, and longitudinal host risk history tracking.
+    """
+    results_file = RESULTS_DIR / f"{capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    try:
+        engine = HistoricalForensicsEngine(data)
+        forensic_summary = engine.reconstruct()
+        data["forensic_reconstruction"] = forensic_summary
+        with open(results_file, "w") as f_out:
+            json.dump(data, f_out, indent=2, default=str)
+        return JSONResponse(content=forensic_summary)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reconstruct forensics: {str(e)}")
+
+
+# ─── 9. USP 6: CRYPTOGRAPHIC DRIFT & BASELINE ANALYSIS ───
+class CreateBaselineRequest(BaseModel):
+    capture_id: str
+    name: str
+    description: Optional[str] = ""
+    target_endpoint: Optional[str] = None
+
+
+class DriftCompareRequest(BaseModel):
+    capture_id: str
+    baseline_id: str
+    target_endpoint: Optional[str] = None
+
+
+@app.get("/api/baselines")
+async def list_baselines():
+    """List all available baselines (pre-seeded standards and custom captured baselines)."""
+    try:
+        baselines = drift_engine.list_baselines()
+        return JSONResponse(content={"baselines": baselines, "total": len(baselines)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list baselines: {str(e)}")
+
+
+@app.post("/api/baselines")
+async def create_baseline(req: CreateBaselineRequest):
+    """Create an empirical baseline from a completed capture analysis."""
+    results_file = RESULTS_DIR / f"{req.capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {req.capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    try:
+        baseline = drift_engine.create_baseline_from_analysis(
+            analysis_data=data,
+            name=req.name,
+            description=req.description or "",
+            target_endpoint=req.target_endpoint
+        )
+        return JSONResponse(content=baseline)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create baseline: {str(e)}")
+
+
+@app.get("/api/baselines/{baseline_id}")
+async def get_baseline(baseline_id: str):
+    """Retrieve full details of a specific baseline."""
+    b = drift_engine.get_baseline(baseline_id)
+    if not b:
+        raise HTTPException(status_code=404, detail=f"Baseline not found: {baseline_id}")
+    return JSONResponse(content=b)
+
+
+@app.delete("/api/baselines/{baseline_id}")
+async def delete_baseline(baseline_id: str):
+    """Delete a custom baseline."""
+    success = drift_engine.delete_baseline(baseline_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot delete baseline (protected default or not found).")
+    return {"success": True, "deleted_id": baseline_id}
+
+
+@app.post("/api/drift/compare")
+async def compare_drift(req: DriftCompareRequest):
+    """
+    USP 6: Compare an analyzed capture against a baseline.
+    Computes property-by-property diffs, evaluates security significance,
+    and records to comparison history.
+    """
+    results_file = RESULTS_DIR / f"{req.capture_id}.json"
+    if not results_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis not found for ID: {req.capture_id}")
+
+    with open(results_file, "r") as f:
+        data = json.load(f)
+
+    try:
+        comp_record = drift_engine.compare_analysis_against_baseline(
+            analysis_data=data,
+            baseline_id=req.baseline_id,
+            target_endpoint=req.target_endpoint
+        )
+        return JSONResponse(content=comp_record)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Drift comparison failed: {str(e)}")
+
+
+@app.get("/api/drift/history")
+async def get_drift_history(capture_id: Optional[str] = None):
+    """Retrieve historical drift comparison runs."""
+    try:
+        history = drift_engine.list_comparisons(capture_id=capture_id)
+        return JSONResponse(content={"comparisons": history, "total": len(history)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve drift history: {str(e)}")
+
+
+@app.get("/api/drift/comparison/{comparison_id}")
+async def get_comparison_detail(comparison_id: str):
+    """Retrieve a specific completed drift comparison report."""
+    comp = drift_engine.get_comparison(comparison_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail=f"Comparison not found: {comparison_id}")
+    return JSONResponse(content=comp)
+
+
 # ΓöÇΓöÇΓöÇ HELPER PIPELINE FUNCTION ΓöÇΓöÇΓöÇ
 def run_analysis_pipeline(file_path: Path, original_filename: str, capture_id: str, file_size: int):
     """Executes the PCAP analyzer, saves the payload, and returns JSON."""
@@ -378,6 +638,13 @@ def run_analysis_pipeline(file_path: Path, original_filename: str, capture_id: s
         result["original_filename"] = original_filename
         result["file_size"] = file_size
         result["status"] = "completed"
+
+        # Automatically compute forensic reconstruction (USP 1)
+        try:
+            f_engine = HistoricalForensicsEngine(result)
+            result["forensic_reconstruction"] = f_engine.reconstruct()
+        except Exception as fe:
+            print(f"Forensics engine warning: {fe}")
 
         # Save to cache
         results_file = RESULTS_DIR / f"{capture_id}.json"

@@ -23,7 +23,8 @@ from main import app
 from app.services.provenance_service import ProvenanceGraphBuilder
 
 client = TestClient(app)
-RESULTS_DIR = Path("results")
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+RESULTS_DIR = BACKEND_DIR / "results"
 
 
 def test_provenance_builder_comprehensive_scenario():

@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { getAnalysis, getAnalyses, getProvenanceGraph } from '../utils/api';
+import { 
+  getAnalysis, 
+  getAnalyses, 
+  getProvenanceGraph, 
+  downloadForensicReportPdf, 
+  downloadDriftReportPdf, 
+  downloadCombinedReportPdf, 
+  getDriftHistory 
+} from '../utils/api';
 import { AIExplanation } from '../components/AIExplanation';
 import { ProvenanceGraph } from '../components/ProvenanceGraph';
 import { CryptographicStateAssessment } from '../components/CryptographicStateAssessment';
 import { EvidenceBasedAssessment } from '../components/EvidenceBasedAssessment';
+import { ForensicTimeline } from '../components/ForensicTimeline';
+import { BaselineDriftMatrix } from '../components/BaselineDriftMatrix';
 
 // ── Toast notification ────────────────────────────────────────────────────────
 function Toast({ toasts, remove }) {
@@ -192,6 +202,73 @@ export function Analysis() {
   };
 
   const drawerOpen = !!(selectedFinding || selectedSession);
+
+  // ── Dedicated PDF Export State & Handlers ────────────────────────────────────
+  const [exportingForensicPdf, setExportingForensicPdf] = useState(false);
+  const [exportingDriftPdf, setExportingDriftPdf] = useState(false);
+  const [exportingCombinedPdf, setExportingCombinedPdf] = useState(false);
+  const [availableDriftRuns, setAvailableDriftRuns] = useState([]);
+
+  useEffect(() => {
+    const targetId = analysisData?.capture_id || jobId;
+    if (targetId) {
+      getDriftHistory(targetId)
+        .then(res => setAvailableDriftRuns(res.comparisons || []))
+        .catch(err => console.error('Error fetching drift history:', err));
+    }
+  }, [analysisData, jobId, activeTab]);
+
+  const handleExportForensicPdf = async () => {
+    const targetId = analysisData?.capture_id || jobId;
+    if (!targetId) return;
+    try {
+      setExportingForensicPdf(true);
+      await downloadForensicReportPdf(targetId);
+      addToast('Forensic PDF Report downloaded successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to generate Forensic PDF report: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setExportingForensicPdf(false);
+    }
+  };
+
+  const handleExportDriftPdf = async () => {
+    if (!availableDriftRuns || availableDriftRuns.length === 0) {
+      addToast('Please run a baseline drift comparison first in the Baseline & Drift tab.', 'info');
+      return;
+    }
+    try {
+      setExportingDriftPdf(true);
+      const latestCmpId = availableDriftRuns[0].comparison_id;
+      await downloadDriftReportPdf(latestCmpId);
+      addToast('Drift PDF Report downloaded successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to generate Drift PDF report: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setExportingDriftPdf(false);
+    }
+  };
+
+  const handleExportCombinedPdf = async () => {
+    const targetId = analysisData?.capture_id || jobId;
+    if (!availableDriftRuns || availableDriftRuns.length === 0) {
+      addToast('Combined report requires at least one completed baseline comparison for this capture.', 'info');
+      return;
+    }
+    try {
+      setExportingCombinedPdf(true);
+      const latestCmpId = availableDriftRuns[0].comparison_id;
+      await downloadCombinedReportPdf(targetId, latestCmpId);
+      addToast('Combined Investigation PDF Report downloaded successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to generate Combined PDF report: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setExportingCombinedPdf(false);
+    }
+  };
 
   // Loading state
   if (loading) return (
@@ -419,6 +496,26 @@ export function Analysis() {
         {[
           { id: 'overview', label: 'Overview', icon: 'fa-solid fa-gauge-high' },
           {
+            id: 'timeline',
+            label: 'Forensic Timeline',
+            icon: 'fa-solid fa-timeline',
+            badge: analysisData?.forensic_reconstruction?.forensic_metrics?.total_events != null
+              ? analysisData.forensic_reconstruction.forensic_metrics.total_events
+              : null,
+            badgeBg: 'rgba(99, 102, 241, 0.25)',
+            badgeBorder: 'rgba(99, 102, 241, 0.5)',
+            badgeColor: '#a5b4fc'
+          },
+          {
+            id: 'drift',
+            label: 'Baseline & Drift',
+            icon: 'fa-solid fa-arrows-split-up-and-left',
+            badge: availableDriftRuns?.length > 0 ? `${availableDriftRuns.length} Runs` : null,
+            badgeBg: 'rgba(245, 158, 11, 0.2)',
+            badgeBorder: 'rgba(245, 158, 11, 0.4)',
+            badgeColor: '#fcd34d'
+          },
+          {
             id: 'evidence_assessment',
             label: 'Evidence-Based Assessment',
             icon: 'fa-solid fa-scale-balanced',
@@ -556,6 +653,28 @@ export function Analysis() {
               {rawFindings.length === 0 && <span className="badge badge-low" style={{ padding: '6px 12px' }}>0 Vulnerabilities Detected</span>}
             </div>
           </div>
+        </section>
+      )}
+
+      {/* ── USP 1: Historical Cryptographic Forensics Timeline ── */}
+      {activeTab === 'timeline' && (
+        <section className="tab-content active">
+          <ForensicTimeline
+            analysisData={analysisData}
+            onNavigateFinding={(fid) => {
+              setActiveTab('findings');
+              setFindingsSearch(fid);
+            }}
+          />
+        </section>
+      )}
+
+      {/* ── USP 6: Cryptographic Drift & Baseline Analysis ── */}
+      {activeTab === 'drift' && (
+        <section className="tab-content active">
+          <BaselineDriftMatrix
+            analysisData={analysisData}
+          />
         </section>
       )}
 
@@ -810,38 +929,194 @@ export function Analysis() {
         </section>
       )}
 
-      {/* ── Report ── */}
+      {/* ── Report Tab: Dedicated Professional Document Generation ── */}
       {activeTab === 'report' && (
-        <section className="tab-content active">
+        <section className="tab-content active" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Card */}
           <div className="glass-card">
-            <h3 className="drawer-section-title" style={{ marginBottom: 12 }}>Security &amp; Forensics Report</h3>
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>Generate a complete assessment report from the findings, sessions and cryptographical forensics.</p>
-            <div className="report-preview-box" style={{ marginBottom: 20 }}>
-              <h1 style={{ fontSize: 18, fontWeight: 600, color: '#ffffff', marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>SecureMailScope Security Assessment</h1>
+            <h3 className="drawer-section-title" style={{ marginBottom: 6 }}>
+              Professional Security &amp; Forensic Document Generation
+            </h3>
+            <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
+              Generate publication-grade, formal technical audit documents formatted with dedicated layout typography, metadata tables, executive summaries, evidence citations, and running headers/footers.
+            </p>
+          </div>
+
+          {/* Dedicated Document Export Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+            {/* Report A */}
+            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px', borderTop: '3px solid #6366f1' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#a5b4fc', background: 'rgba(99,102,241,0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                    REPORT A &bull; FORENSIC AUDIT
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>Standard Formal PDF</span>
+                </div>
+                <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
+                  Historical Cryptographic Forensics Report
+                </h4>
+                <p style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '16px' }}>
+                  Complete forensic timeline, TCP stream correlation, X.509 PKI certificates, severity distribution, and ISO/IEC 27037 evidentiary boundaries.
+                </p>
+              </div>
+              <button
+                onClick={handleExportForensicPdf}
+                disabled={exportingForensicPdf}
+                className="btn-action"
+                style={{
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  border: 'none',
+                  cursor: exportingForensicPdf ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <i className={exportingForensicPdf ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-file-pdf"} />
+                <span>{exportingForensicPdf ? "Compiling Document…" : "Export Forensic Report (PDF)"}</span>
+              </button>
+            </div>
+
+            {/* Report B */}
+            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px', borderTop: '3px solid #f59e0b' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#fcd34d', background: 'rgba(245,158,11,0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                    REPORT B &bull; DRIFT ANALYSIS
+                  </span>
+                  <span style={{ fontSize: '11px', color: availableDriftRuns.length > 0 ? '#10b981' : '#94a3b8', fontWeight: 600 }}>
+                    {availableDriftRuns.length > 0 ? `${availableDriftRuns.length} Comparison(s) Ready` : 'Baseline Required'}
+                  </span>
+                </div>
+                <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
+                  Cryptographic Drift &amp; Baseline Report
+                </h4>
+                <p style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '16px' }}>
+                  Granular property-by-property diff matrix, security significance classifications (weakened vs strengthened), and policy regression audit.
+                </p>
+              </div>
+              <button
+                onClick={handleExportDriftPdf}
+                disabled={exportingDriftPdf || availableDriftRuns.length === 0}
+                className="btn-action"
+                style={{
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  background: availableDriftRuns.length > 0 ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(255,255,255,0.06)',
+                  color: availableDriftRuns.length > 0 ? '#ffffff' : '#64748b',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  border: 'none',
+                  cursor: (exportingDriftPdf || availableDriftRuns.length === 0) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <i className={exportingDriftPdf ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-file-pdf"} />
+                <span>
+                  {exportingDriftPdf
+                    ? "Compiling Document…"
+                    : availableDriftRuns.length > 0
+                      ? "Export Drift Report (PDF)"
+                      : "Run Drift Comparison First"}
+                </span>
+              </button>
+            </div>
+
+            {/* Report C */}
+            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px', borderTop: '3px solid #10b981' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#6ee7b7', background: 'rgba(16,185,129,0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                    REPORT C &bull; COMBINED
+                  </span>
+                  <span style={{ fontSize: '11px', color: availableDriftRuns.length > 0 ? '#10b981' : '#94a3b8', fontWeight: 600 }}>
+                    {availableDriftRuns.length > 0 ? 'Compatible' : 'Requires Drift Run'}
+                  </span>
+                </div>
+                <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
+                  Combined Investigation Report
+                </h4>
+                <p style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '16px' }}>
+                  Authoritative multi-section document merging raw forensic findings, session timelines, and longitudinal baseline deviations.
+                </p>
+              </div>
+              <button
+                onClick={handleExportCombinedPdf}
+                disabled={exportingCombinedPdf || availableDriftRuns.length === 0}
+                className="btn-action"
+                style={{
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  background: availableDriftRuns.length > 0 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'rgba(255,255,255,0.06)',
+                  color: availableDriftRuns.length > 0 ? '#ffffff' : '#64748b',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  border: 'none',
+                  cursor: (exportingCombinedPdf || availableDriftRuns.length === 0) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <i className={exportingCombinedPdf ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-file-pdf"} />
+                <span>
+                  {exportingCombinedPdf
+                    ? "Compiling Document…"
+                    : availableDriftRuns.length > 0
+                      ? "Export Combined Report (PDF)"
+                      : "Run Drift Comparison First"}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Preview & Supplementary Exports */}
+          <div className="glass-card">
+            <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+              Report Summary Preview &amp; Supplementary Formats
+            </h4>
+            <div className="report-preview-box" style={{ marginBottom: 16 }}>
+              <h1 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
+                SecureMailScope Security Assessment Summary
+              </h1>
               <p><strong>Target PCAP:</strong> {analysisData.original_filename || `${currentCaptureId}.pcap`}</p>
               <p><strong>Overall Posture score:</strong> {score} / 100 ({score >= 75 ? 'HIGH' : score >= 40 ? 'MEDIUM' : 'LOW'} RISK)</p>
               <br />
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: '#ffffff', marginBottom: 6 }}>Executive Summary</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', marginBottom: 6 }}>Executive Findings Summary</h2>
               <p>
                 {rawFindings.length > 0
-                  ? `During the automated deep packet analysis of ${analysisData.original_filename || currentCaptureId}, ${rawFindings.length} security violation(s) were identified across ${summary.session_count ?? sessions.length} email communication stream(s).`
+                  ? `Automated deep packet analysis of ${analysisData.original_filename || currentCaptureId} identified ${rawFindings.length} security violation(s) across ${summary.session_count ?? sessions.length} email communication stream(s).`
                   : `Automated inspection of ${analysisData.original_filename || currentCaptureId} completed. All inspected sessions satisfy secure cryptographic requirements.`}
               </p>
               <br />
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: '#ffffff', marginBottom: 6 }}>Vulnerability Summary</h2>
-              <ul>
-                <li>Critical: {criticalCount}</li>
-                <li>High: {highCount}</li>
-                <li>Medium: {medCount}</li>
-                <li>Low: {lowCount}</li>
-              </ul>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
+                <span style={{ color: '#ef4444' }}><strong>Critical:</strong> {criticalCount}</span>
+                <span style={{ color: '#f97316' }}><strong>High:</strong> {highCount}</span>
+                <span style={{ color: '#eab308' }}><strong>Medium:</strong> {medCount}</span>
+                <span style={{ color: '#10b981' }}><strong>Low:</strong> {lowCount}</span>
+              </div>
             </div>
+
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <button className="btn-action" onClick={exportJson}>
-                <i className="fa-solid fa-code"></i> Export JSON
+              <button className="btn-action" onClick={exportJson} style={{ fontSize: '12px', padding: '8px 16px' }}>
+                <i className="fa-solid fa-code"></i> Supplementary JSON
               </button>
-              <button className="btn-action btn-secondary" onClick={exportHtml}>
-                <i className="fa-solid fa-download"></i> Download HTML
+              <button className="btn-action btn-secondary" onClick={exportHtml} style={{ fontSize: '12px', padding: '8px 16px' }}>
+                <i className="fa-solid fa-download"></i> Supplementary HTML
               </button>
             </div>
           </div>
