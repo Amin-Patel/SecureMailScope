@@ -1,13 +1,38 @@
 // src/utils/api.js
-// Real API service layer for SecureMailScope frontend.
-// Uses Axios to communicate with the FastAPI backend at http://localhost:8001/api
+// Complete Unified API service layer for SecureMailScope frontend.
+// Supports both Supabase JWT session authentication and local auditor fallback.
+// Communicates with the FastAPI backend at http://localhost:8001/api (or configured VITE_API_BASE_URL).
 
 import axios from 'axios';
+import { supabase } from '../lib/supabase';
 
-// Create a reusable Axios instance with the required base URL.
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001'
+).replace(/\/+$/, '');
+
+export const API_URL = API_BASE_URL.endsWith('/api')
+  ? API_BASE_URL
+  : `${API_BASE_URL}/api`;
+
+// Create a reusable Axios instance with the resolved base URL
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8001/api',
-  timeout: 15000, // 15 seconds timeout for all requests
+  baseURL: API_URL,
+  timeout: 30000, // 30 seconds timeout
+});
+
+// Request Interceptor: Automatically attach Supabase JWT Token if present
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (err) {
+    console.warn('[API Client] Could not attach Supabase session token:', err);
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 /**
@@ -30,6 +55,22 @@ function parseError(error) {
 }
 
 /**
+ * Helper to trigger a real file download in the browser from a binary Blob.
+ */
+function triggerBlobDownload(blobData, filename, mimeType = 'application/pdf') {
+  const url = window.URL.createObjectURL(new Blob([blobData], { type: mimeType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+// ─── CORE ANALYSIS ENDPOINTS ───
+
+/**
  * Upload a PCAP (or PCAPNG) file to the backend.
  * @param {File} file The file object selected by the user.
  * @returns {Promise<Object>} Resolves with the backend response containing capture_id, filename, size, status.
@@ -43,7 +84,6 @@ export async function uploadPCAP(file) {
     });
     return response.data;
   } catch (err) {
-    // Throw a clean error that callers can catch and display.
     const msg = parseError(err);
     const error = new Error(msg);
     error.original = err;
@@ -58,7 +98,7 @@ export async function uploadPCAP(file) {
  */
 export async function getAnalysisResults(captureId) {
   try {
-    const response = await apiClient.get(`/analysis/${captureId}/results`);
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/results`);
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -75,7 +115,7 @@ export async function getAnalysisResults(captureId) {
  */
 export async function getAnalysisStatus(captureId) {
   try {
-    const response = await apiClient.get(`/analysis/${captureId}/status`);
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/status`);
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -102,13 +142,18 @@ export async function getAnalyses() {
 }
 
 /**
- * Trigger the analysis of a demo/sample PCAP file on the server.
- * @param {string} demoName The filename of the demo PCAP (e.g. smtp.pcap or rsasnakeoil2.cap).
- * @returns {Promise<Object>} The complete analysis payload.
+ * Backward‑compatible alias for uploadPCAP.
  */
-export async function uploadDemo(demoName) {
+export const uploadPcap = uploadPCAP;
+export const getAnalysis = getAnalysisResults;
+
+/**
+ * Check backend health status.
+ * @returns {Promise<Object>} Status payload.
+ */
+export async function checkBackendHealth() {
   try {
-    const response = await apiClient.post(`/upload-demo?demo_name=${encodeURIComponent(demoName)}`);
+    const response = await apiClient.get('/health');
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -118,26 +163,11 @@ export async function uploadDemo(demoName) {
   }
 }
 
-// Backward‑compatible aliases used by existing components.
-export const uploadPcap = uploadPCAP;
-export const getAnalysis = getAnalysisResults;
+// ─── DEMO SCENARIO PRESETS ───
 
 /**
- * Check if the backend is reachable.
- * @returns {Promise<Object>} health data
- */
-export async function checkBackendHealth() {
-  try {
-    const response = await apiClient.get('/health');
-    return response.data;
-  } catch (err) {
-    throw new Error('Backend disconnected. Ensure FastAPI is running on port 8001.');
-  }
-}
-
-/**
- * Get available demo samples from the backend.
- * @returns {Promise<Object>} Available samples list.
+ * Get pre-packaged demo scenarios.
+ * @returns {Promise<Object>} Object with samples list.
  */
 export async function getDemoSamples() {
   try {
@@ -152,9 +182,9 @@ export async function getDemoSamples() {
 }
 
 /**
- * Load a sample preset demo.
- * @param {string} sampleId The dynamic sample preset ID (e.g. vulnerable_smtp, legacy_ssl3).
- * @returns {Promise<Object>} Analysis results.
+ * Load and analyze a pre-packaged demo PCAP file on the backend.
+ * @param {string} sampleId The ID of the demo sample (e.g. 'vulnerable_smtp', 'legacy_ssl3', 'secure_enterprise', 'sih_comprehensive')
+ * @returns {Promise<Object>} Analysis results payload.
  */
 export async function loadDemo(sampleId) {
   try {
@@ -169,7 +199,14 @@ export async function loadDemo(sampleId) {
 }
 
 /**
- * Delete a specific analysis record by capture ID.
+ * Alias for loadDemo for legacy component compatibility.
+ */
+export const uploadDemo = loadDemo;
+
+// ─── RECORD DELETION ───
+
+/**
+ * Delete a specific analysis record by capture_id.
  * @param {string} captureId 
  * @returns {Promise<Object>}
  */
@@ -186,8 +223,8 @@ export async function deleteAnalysis(captureId) {
 }
 
 /**
- * Batch delete multiple analysis records by array of capture IDs.
- * @param {Array<string>} captureIds 
+ * Batch delete multiple analyses.
+ * @param {string[]} captureIds 
  * @returns {Promise<Object>}
  */
 export async function deleteAnalysesBatch(captureIds) {
@@ -202,9 +239,93 @@ export async function deleteAnalysesBatch(captureIds) {
   }
 }
 
+// ─── TCP STREAM RECONSTRUCTION & VIEWER (CQSP) ───
+
+/**
+ * Retrieve reconstructed TCP stream transcript by stream ID.
+ * @param {string} captureId 
+ * @param {string|number} streamId 
+ * @returns {Promise<Object>}
+ */
+export async function getStreamDetails(captureId, streamId) {
+  try {
+    const response = await apiClient.get(`/analysis/${encodeURIComponent(captureId)}/stream/${encodeURIComponent(streamId)}`);
+    return response.data;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+// ─── REPORTS & EXPORTS ───
+
+/**
+ * Construct report URL path
+ * @param {string} captureId
+ * @param {'html' | 'pdf' | 'json'} format
+ * @returns {string}
+ */
+export function getReportUrl(captureId, format = 'html') {
+  return `${API_URL}/analysis/${encodeURIComponent(captureId)}/report?format=${format}`;
+}
+
+/**
+ * Download a generated report (PDF, HTML, or JSON) with Supabase authentication attached.
+ * @param {string} captureId
+ * @param {'pdf' | 'html' | 'json'} format
+ */
+export async function downloadReport(captureId, format = 'pdf') {
+  try {
+    const cleanId = encodeURIComponent(captureId);
+    const response = await apiClient.get(`/analysis/${cleanId}/report?format=${format}`, {
+      responseType: 'blob',
+    });
+
+    const mimeTypes = {
+      pdf: 'application/pdf',
+      html: 'text/html',
+      json: 'application/json',
+    };
+    const mimeType = mimeTypes[format] || 'application/octet-stream';
+    triggerBlobDownload(response.data, `SecureMailScope_Report_${captureId}.${format}`, mimeType);
+    return true;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+/**
+ * Open the HTML executive forensic report in a new browser tab with authentication attached.
+ * @param {string} captureId
+ */
+export async function viewReportHtml(captureId) {
+  try {
+    const cleanId = encodeURIComponent(captureId);
+    const response = await apiClient.get(`/analysis/${cleanId}/report?format=html`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
+  } catch (err) {
+    const msg = parseError(err);
+    const error = new Error(msg);
+    error.original = err;
+    throw error;
+  }
+}
+
+// ─── EVIDENCE PROVENANCE GRAPH (USP 3) ───
+
 /**
  * Retrieve the Evidence Provenance Graph for a given capture ID.
- * @param {string} captureId The capture ID to fetch provenance for.
+ * @param {string} captureId 
  * @returns {Promise<Object>} Full provenance graph payload with nodes, edges, metrics, and traceability index.
  */
 export async function getProvenanceGraph(captureId) {
@@ -220,10 +341,10 @@ export async function getProvenanceGraph(captureId) {
 }
 
 /**
- * Retrieve detailed entity forensic inspection data for a specific provenance node.
- * @param {string} captureId The capture ID.
- * @param {string} nodeId The node ID.
- * @returns {Promise<Object>} Forensic details, incoming/outgoing relationships, and upstream/downstream links.
+ * Retrieve granular detail for a single provenance graph node.
+ * @param {string} captureId 
+ * @param {string} nodeId 
+ * @returns {Promise<Object>}
  */
 export async function getProvenanceNodeDetail(captureId, nodeId) {
   try {
@@ -237,10 +358,12 @@ export async function getProvenanceNodeDetail(captureId, nodeId) {
   }
 }
 
+// ─── HISTORICAL FORENSICS & RECONSTRUCTION (USP 1) ───
+
 /**
- * Retrieve Historical Cryptographic Forensics event timeline and host history (USP 1).
+ * Retrieve chronological forensic timeline and host progression.
  * @param {string} captureId 
- * @returns {Promise<Object>} Reconstructed event timeline, sessions, and temporal risk regressions.
+ * @returns {Promise<Object>}
  */
 export async function getForensics(captureId) {
   try {
@@ -254,9 +377,13 @@ export async function getForensics(captureId) {
   }
 }
 
+export const getForensicsTimeline = getForensics;
+
+// ─── CRYPTOGRAPHIC BASELINES & DRIFT ENGINE (USP 6) ───
+
 /**
- * List all available baselines (USP 6).
- * @returns {Promise<Object>} List of baselines.
+ * Retrieve all registered cryptographic baselines.
+ * @returns {Promise<Object>}
  */
 export async function getBaselines() {
   try {
@@ -271,9 +398,9 @@ export async function getBaselines() {
 }
 
 /**
- * Create an empirical baseline from an analyzed capture (USP 6).
- * @param {Object} data { capture_id, name, description, target_endpoint }
- * @returns {Promise<Object>} Created baseline record.
+ * Create a new cryptographic baseline profile.
+ * @param {Object} data 
+ * @returns {Promise<Object>}
  */
 export async function createBaseline(data) {
   try {
@@ -288,7 +415,7 @@ export async function createBaseline(data) {
 }
 
 /**
- * Retrieve a specific baseline by ID (USP 6).
+ * Retrieve a single baseline by ID.
  * @param {string} baselineId 
  * @returns {Promise<Object>}
  */
@@ -305,7 +432,7 @@ export async function getBaseline(baselineId) {
 }
 
 /**
- * Delete a custom baseline by ID (USP 6).
+ * Delete a baseline by ID.
  * @param {string} baselineId 
  * @returns {Promise<Object>}
  */
@@ -322,9 +449,9 @@ export async function deleteBaseline(baselineId) {
 }
 
 /**
- * Compare an analyzed capture against a reference baseline (USP 6).
- * @param {Object} data { capture_id, baseline_id, target_endpoint }
- * @returns {Promise<Object>} Comparison record with property diffs and security significance.
+ * Compare an analysis capture against a baseline or another capture for cryptographic drift.
+ * @param {Object} data 
+ * @returns {Promise<Object>}
  */
 export async function compareDrift(data) {
   try {
@@ -339,14 +466,13 @@ export async function compareDrift(data) {
 }
 
 /**
- * List historical drift comparisons (USP 6).
- * @param {string} [captureId] Optional capture filter
+ * Retrieve previous drift comparison history for a given capture.
+ * @param {string} captureId 
  * @returns {Promise<Object>}
  */
 export async function getDriftHistory(captureId) {
   try {
-    const url = captureId ? `/drift/history?capture_id=${encodeURIComponent(captureId)}` : '/drift/history';
-    const response = await apiClient.get(url);
+    const response = await apiClient.get(`/drift/history/${encodeURIComponent(captureId)}`);
     return response.data;
   } catch (err) {
     const msg = parseError(err);
@@ -356,19 +482,7 @@ export async function getDriftHistory(captureId) {
   }
 }
 
-/**
- * Helper to trigger a real file download in the browser from a binary Blob.
- */
-function triggerBlobDownload(blobData, filename) {
-  const url = window.URL.createObjectURL(new Blob([blobData], { type: 'application/pdf' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', filename);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
-}
+// ─── EXECUTIVE PDF REPORT GENERATION (USP 1 & 6) ───
 
 /**
  * Download Report A: Historical Cryptographic Forensics PDF Report.
@@ -428,6 +542,136 @@ export async function downloadCombinedReportPdf(captureId, comparisonId) {
   }
 }
 
+// ─── ACTIVE EMAIL AUTHENTICATION CHECKER & WATCHER ───
 
+/**
+ * Active SPF/DKIM/DMARC DNS check for a domain (separate from passive PCAP analysis).
+ * @param {string} domain
+ * @param {string} [dkimSelector]
+ */
+export async function checkEmailAuth(domain, dkimSelector) {
+  try {
+    const response = await apiClient.post('/email-auth-check', {
+      domain: domain.trim(),
+      dkim_selector: dkimSelector?.trim() || null,
+    });
+    return response.data;
+  } catch (err) {
+    throw new Error(err.response?.data?.detail || parseError(err));
+  }
+}
 
+/**
+ * Folder-monitoring status (enabled flag, current file, recently processed captures).
+ * Never throws: a failed poll just reports monitoring as unavailable.
+ */
+export async function getWatchStatus() {
+  try {
+    const response = await apiClient.get('/watch/status');
+    return response.data;
+  } catch {
+    return { enabled: false, running: false, recent: [] };
+  }
+}
 
+// ─── KNOWLEDGE BASE / RAG ADMIN SERVICES ───
+
+export async function getKnowledgeSources() {
+  try {
+    const res = await apiClient.get('/admin/kb/sources');
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function getKnowledgeGaps() {
+  try {
+    const res = await apiClient.get('/admin/kb/gaps');
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function proposeKnowledgeGap(data) {
+  try {
+    const res = await apiClient.post('/admin/kb/proposals', data);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function getPendingProposals() {
+  try {
+    const res = await apiClient.get('/admin/kb/proposals');
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function approveProposal(proposalId) {
+  try {
+    const res = await apiClient.put(`/admin/kb/proposals/${encodeURIComponent(proposalId)}/approve`);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function deleteProposal(proposalId) {
+  try {
+    const res = await apiClient.delete(`/admin/kb/proposals/${encodeURIComponent(proposalId)}`);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function getKnowledgeArticles() {
+  try {
+    const res = await apiClient.get('/admin/kb/articles');
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function createKnowledgeArticle(data) {
+  try {
+    const res = await apiClient.post('/admin/kb/articles', data);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function approveKnowledgeArticle(articleId) {
+  try {
+    const res = await apiClient.put(`/admin/kb/articles/${encodeURIComponent(articleId)}/approve`);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}
+
+export async function deleteKnowledgeArticle(articleId) {
+  try {
+    const res = await apiClient.delete(`/admin/kb/articles/${encodeURIComponent(articleId)}`);
+    return res.data;
+  } catch (err) {
+    const msg = parseError(err);
+    throw new Error(msg);
+  }
+}

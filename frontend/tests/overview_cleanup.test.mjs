@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const analysisFilePath = path.resolve('frontend/src/pages/Analysis.jsx');
+const baseDir = fs.existsSync(path.resolve('src/pages/Analysis.jsx')) ? path.resolve('.') : path.resolve('frontend');
+const analysisFilePath = path.join(baseDir, 'src/pages/Analysis.jsx');
 const analysisContent = fs.readFileSync(analysisFilePath, 'utf-8');
 
 test('Test 1: Overview section does not contain duplicate embedded EvidenceBasedAssessment', () => {

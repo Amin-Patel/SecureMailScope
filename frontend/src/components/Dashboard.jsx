@@ -10,6 +10,7 @@ import { FindingModal } from './FindingModal';
 import { SessionTimeline } from './SessionTimeline';
 import { ReportExportModal } from './ReportExportModal';
 import { PrintableReport } from './PrintableReport';
+import EmailAuthPanel from './EmailAuthPanel';
 
 const SEVERITY_ORDER = {
   CRITICAL: 1,
@@ -661,6 +662,12 @@ export function Dashboard() {
               </Link>
             </div>
           </div>
+
+          {/* Active Email Authentication Check (SPF / DKIM / DMARC) */}
+          <EmailAuthPanel
+            certificates={certificates}
+            emailAuth={rawResults?.email_auth}
+          />
         </section>
       </div>
 

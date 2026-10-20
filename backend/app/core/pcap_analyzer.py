@@ -1,12 +1,11 @@
 """
 Core PCAP analysis module for SecureMailScope
-Full pipeline: PCAP → Detection → TLS → Certs → Security → AI Intelligence → Risk
-Uses tshark directly for maximum speed and FastAPI compatibility
+Full pipeline: PCAP → Protocol Detection → Structured TCP Streams → TLS Handshakes → Multi-Tier Cert Chains → Passive Email Auth → Deterministic Security Engine → ML Risk Classification → AI Intelligence → Cryptographic State Reasoning → Evidence-Based Assessment
 """
 
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 import hashlib
@@ -29,6 +28,13 @@ from core.protocol_state_machine import (
 )
 from services.gemini_service import GeminiSecurityAssistant
 try:
+    from services import email_auth_analyzer
+    HAS_EMAIL_AUTH = True
+except Exception as _ea_err:
+    HAS_EMAIL_AUTH = False
+    print(f"[*] Email auth analyzer notice: {_ea_err}")
+
+try:
     from services.ml_risk_service import assess_sessions, fuse_risk_level
     HAS_ML_ENGINE = True
 except Exception as _ml_err:
@@ -37,7 +43,7 @@ except Exception as _ml_err:
 
 
 class EmailPCAPAnalyzer:
-    """Full PCAP analysis pipeline for email security assessment"""
+    """Full PCAP analysis pipeline for email security assessment, forensics, and PKI audit"""
 
     EMAIL_PORTS = {
         25: 'SMTP',
@@ -54,8 +60,11 @@ class EmailPCAPAnalyzer:
         self.pcap_path = Path(pcap_path)
         self.email_packets = []
         self.sessions = []
+        self.tcp_streams: Dict[str, Dict] = {}
         self.tls_handshakes = []
         self.certificates = []
+        self.certificate_chains = []
+        self.email_auth = {}
         self.flow_state_machines: Dict[int, FlowStateMachine] = {}
         self.tshark = TSharkHelper()
         self.ai_assistant = GeminiSecurityAssistant()
@@ -64,40 +73,75 @@ class EmailPCAPAnalyzer:
             raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
 
     def analyze(self) -> Dict:
-        """Full analysis pipeline"""
+        """Full analysis pipeline integrating all 6 USPs and CQSPs"""
         print(f"\n{'='*70}")
-        print(f"  SecureMailScope — Email Security Analysis")
+        print(f"  SecureMailScope — Comprehensive Email & Cryptographic Assessment")
         print(f"  File: {self.pcap_path.name}")
         print(f"{'='*70}\n")
 
         try:
             # Step 1: TLS handshakes
-            print("[1/7] Extracting TLS handshakes...")
-            self.tls_handshakes = self.tshark.extract_tls_handshakes(
-                str(self.pcap_path)
-            )
+            print("[1/8] Extracting TLS handshakes...")
+            self.tls_handshakes = self.tshark.extract_tls_handshakes(str(self.pcap_path))
             print(f"       Found {len(self.tls_handshakes)} TLS handshakes")
 
             # Step 2: Email packets (using tshark directly)
-            print("[2/7] Detecting email protocols...")
+            print("[2/8] Detecting email protocols and tracking state machine...")
             self._extract_email_packets()
             print(f"       Found {len(self.email_packets)} email packets")
 
-            # Step 3: Sessions
-            print("[3/7] Reconstructing sessions...")
+            # Step 3: Structured TCP Streams & Reconstructed Sessions
+            print("[3/8] Reconstructing bidirectional TCP conversation streams and sessions...")
+            try:
+                self.tcp_streams = self.tshark.extract_structured_tcp_streams(str(self.pcap_path))
+            except Exception as _tcp_err:
+                print(f"       [!] TCP stream extraction fallback: {_tcp_err}")
+                self.tcp_streams = {}
             self._reconstruct_sessions()
             self._link_tls_to_sessions()
-            print(f"       Reconstructed {len(self.sessions)} sessions")
+            print(f"       Reconstructed {len(self.sessions)} sessions across {len(self.tcp_streams)} TCP streams")
 
-            # Step 4: Certificates
-            print("[4/7] Extracting certificates...")
-            self.certificates = CertificateAnalyzer.extract_certificates(
-                str(self.pcap_path)
-            )
-            print(f"       Extracted {len(self.certificates)} certificates")
+            # Step 4: Multi-Tier Certificate Chains & PKI Hierarchy
+            print("[4/8] Extracting and validating X.509 certificate chains and DER metadata...")
+            try:
+                self.certificate_chains = CertificateAnalyzer.extract_and_analyze_chains(str(self.pcap_path))
+            except Exception as _chain_err:
+                print(f"       [!] Certificate chain extraction notice: {_chain_err}")
+                self.certificate_chains = []
+
+            # Flatten presented certificates for backward compatibility
+            self.certificates = []
+            seen_serials = set()
+            for chain in self.certificate_chains:
+                for c in chain.get('presented_chain', []):
+                    s_num = c.get('serial_number') or c.get('serial')
+                    if s_num and s_num not in seen_serials:
+                        seen_serials.add(s_num)
+                        self.certificates.append(c)
+
+            # If chain extraction yielded no certificates, fallback to extract_certificates
+            if not self.certificates:
+                try:
+                    self.certificates = CertificateAnalyzer.extract_certificates(str(self.pcap_path))
+                except Exception as _cert_err:
+                    print(f"       [!] Certificate extraction notice: {_cert_err}")
+                    self.certificates = []
+            print(f"       Extracted {len(self.certificate_chains)} certificate chains ({len(self.certificates)} unique certificates)")
+
+            # Step 4b: Passive Email Authentication (SPF / DKIM / DMARC)
+            print("[4b/8] Extracting passive email authentication evidence...")
+            if HAS_EMAIL_AUTH:
+                try:
+                    self.email_auth = email_auth_analyzer.analyze_pcap_email_auth(str(self.pcap_path))
+                    print(f"       Found {len(self.email_auth.get('messages', []))} messages, {len(self.email_auth.get('dns_records', []))} DNS policy records")
+                except Exception as _ea_e:
+                    print(f"       [!] Passive email auth notice: {_ea_e}")
+                    self.email_auth = {}
+            else:
+                self.email_auth = {}
 
             # Step 5: Security checks
-            print("[5/7] Running security checks...")
+            print("[5/8] Running deterministic security and PKI checks...")
             all_transitions = []
             for fsm in self.flow_state_machines.values():
                 all_transitions.extend(fsm.transition_history)
@@ -105,15 +149,18 @@ class EmailPCAPAnalyzer:
             analysis_data = {
                 'summary': self._generate_summary(),
                 'sessions': self.sessions,
+                'tcp_streams': self.tcp_streams,
                 'tls_handshakes': self.tls_handshakes,
                 'certificates': self.certificates,
+                'certificate_chains': self.certificate_chains,
+                'email_auth': self.email_auth,
                 'flow_state_transitions': all_transitions
             }
             engine = SecurityEngine(analysis_data)
             findings = engine.run_all_checks()
             risk = engine.calculate_risk_score()
             print(f"       Found {len(findings)} security issues")
-            print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
+            print(f"       Risk Score: {risk['risk_score']}/100 ({risk['risk_level']}) - Grade: {risk.get('risk_grade', 'N/A')}")
 
             # Step 5b: ML Risk Classification & Anomaly Detection (USP 5)
             ml_assessment = None
@@ -127,35 +174,43 @@ class EmailPCAPAnalyzer:
                     print(f"       [!] ML risk assessment bypassed: {_e}")
 
             # Step 6: AI-Powered Intelligence Enrichment
-            print("[6/7] Generating AI Explanations & Threat Intelligence...")
+            print("[6/8] Generating AI Explanations & Threat Intelligence...")
             for finding in findings:
-                ai_meta = self.ai_assistant.explain_finding(finding)
-                finding['ai_explanation'] = ai_meta.get('ai_explanation', '')
-                finding['ai_confidence'] = ai_meta.get('ai_confidence', 'HIGH')
+                try:
+                    ai_meta = self.ai_assistant.explain_finding(finding)
+                    finding['ai_explanation'] = ai_meta.get('ai_explanation', '')
+                    finding['ai_confidence'] = ai_meta.get('ai_confidence', 'HIGH')
+                    if ai_meta.get('ai_source'):
+                        finding['ai_source'] = ai_meta.get('ai_source')
+                    if ai_meta.get('ai_reference'):
+                        finding['ai_reference'] = ai_meta.get('ai_reference')
+                except Exception as _ai_err:
+                    print(f"       [!] Finding AI explanation notice: {_ai_err}")
 
             ai_summary = self.ai_assistant.generate_executive_summary(
                 analysis_data['summary'], findings, risk
             )
             print("       AI Threat Intelligence generated successfully")
 
-            # Step 6b: Cryptographic State Reasoning Engine (USP 2)
-            print("[6b/7] Executing Unified Cryptographic State Reasoning...")
+            # Step 7a: Cryptographic State Reasoning Engine (USP 2)
+            print("[7a/8] Executing Unified Cryptographic State Reasoning (USP 2)...")
             analysis_data['findings'] = findings
             crypto_engine = CryptographicStateEngine(analysis_data)
             crypto_assessment = crypto_engine.evaluate()
             print(f"       Cryptographic State: {crypto_assessment['overall_state_label']}")
 
-            # Step 6c: Evidence-Based Assessment Engine (USP 5)
-            print("[6c/7] Executing Evidence-Based Assessment (Observed / Expected / Unknown)...")
+            # Step 7b: Evidence-Based Assessment Engine (USP 4)
+            print("[7b/8] Executing Evidence-Based Assessment (Observed / Expected / Unknown) (USP 4)...")
             evidence_engine = EvidenceAssessmentEngine(analysis_data)
             evidence_assessment = evidence_engine.evaluate()
             print(f"       Assessed {evidence_assessment['metrics']['total_assessed']} properties: {evidence_assessment['metrics']['satisfied_count']} Satisfied, {evidence_assessment['metrics']['violated_count']} Violated, {evidence_assessment['metrics']['indeterminate_count']} Indeterminate")
 
-            # Step 7: Compile results
-            print("[7/7] Compiling results...\n")
+            # Step 8: Compile results
+            print("[8/8] Compiling results...\n")
             summary = analysis_data['summary']
             summary['risk_score'] = risk['risk_score']
             summary['risk_level'] = risk['risk_level']
+            summary['risk_grade'] = risk.get('risk_grade', 'N/A')
             summary['cryptographic_state'] = crypto_assessment['overall_state']
             summary['cryptographic_state_label'] = crypto_assessment['overall_state_label']
 
@@ -172,7 +227,10 @@ class EmailPCAPAnalyzer:
                 'evidence_based_assessment': evidence_assessment,
                 'flow_state_transitions': all_transitions,
                 'sessions': self._clean_sessions(),
+                'tcp_streams': self.tcp_streams,
                 'certificates': self.certificates,
+                'certificate_chains': self.certificate_chains,
+                'email_auth': self.email_auth,
                 'tls_handshakes': self.tls_handshakes
             }
 
@@ -298,40 +356,29 @@ class EmailPCAPAnalyzer:
                                     frame_number=frame_num, timestamp=ts, stream_id=stream_id,
                                     event_type=ProtocolEventType.SERVER_BANNER, data="220 Banner"
                                 ))
-                        elif code in ('454', '501', '500') and fsm.current_state == ProtocolState.STARTTLS_REQUESTED:
-                            fsm.process_event(ProtocolEvent(
-                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                                event_type=ProtocolEventType.STARTTLS_RESP_ERR, data=f"{code} Error"
-                            ))
-                        else:
-                            fsm.process_event(ProtocolEvent(
-                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                                event_type=ProtocolEventType.PLAINTEXT_RESPONSE, data=code
-                            ))
 
-                # Process TLS records
-                if tls_ct:
-                    if '22' in tls_ct:
-                        if '1' in tls_hs:
-                            fsm.process_event(ProtocolEvent(
-                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                                event_type=ProtocolEventType.TLS_CLIENT_HELLO, data="TLS ClientHello"
-                            ))
-                        elif any(h in ('2', '11', '14') for h in tls_hs):
-                            fsm.process_event(ProtocolEvent(
-                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                                event_type=ProtocolEventType.TLS_SERVER_HELLO, data="TLS ServerHello"
-                            ))
-                        else:
-                            fsm.process_event(ProtocolEvent(
-                                frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                                event_type=ProtocolEventType.TLS_HANDSHAKE_PROGRESS, data="TLS Handshake Progress"
-                            ))
-                    if '23' in tls_ct:
+                # Process TLS events
+                if tls_hs:
+                    if '1' in tls_hs:
                         fsm.process_event(ProtocolEvent(
                             frame_number=frame_num, timestamp=ts, stream_id=stream_id,
-                            event_type=ProtocolEventType.TLS_APPLICATION_DATA, data="TLS Application Data"
+                            event_type=ProtocolEventType.TLS_CLIENT_HELLO, data="TLS ClientHello"
                         ))
+                    elif any(h in ('2', '11', '14') for h in tls_hs):
+                        fsm.process_event(ProtocolEvent(
+                            frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                            event_type=ProtocolEventType.TLS_SERVER_HELLO, data="TLS ServerHello"
+                        ))
+                    else:
+                        fsm.process_event(ProtocolEvent(
+                            frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                            event_type=ProtocolEventType.TLS_HANDSHAKE_PROGRESS, data="TLS Handshake Progress"
+                        ))
+                if '23' in tls_ct:
+                    fsm.process_event(ProtocolEvent(
+                        frame_number=frame_num, timestamp=ts, stream_id=stream_id,
+                        event_type=ProtocolEventType.TLS_APPLICATION_DATA, data="TLS Application Data"
+                    ))
 
                 # Evidence-based packet encryption status
                 is_encrypted = (
@@ -347,6 +394,7 @@ class EmailPCAPAnalyzer:
                     'dst': dst_ip,
                     'src_port': src_port,
                     'dst_port': dst_port,
+                    'tcp_stream': stream_id_raw,
                     'stream_id': stream_id,
                     'protocol': protocol,
                     'length': int(layers.get('frame.len', ['0'])[0]),
@@ -370,9 +418,12 @@ class EmailPCAPAnalyzer:
             ])
             key = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
 
+            stream_id_val = int(pkt.get('tcp_stream', 0)) if str(pkt.get('tcp_stream', '')).isdigit() else 0
+
             if key not in session_map:
                 session_map[key] = {
                     'id': f"session_{len(session_map) + 1}",
+                    'stream_id': stream_id_val,
                     'protocol': pkt['protocol'],
                     'src': pkt['src'],
                     'dst': pkt['dst'],
@@ -388,7 +439,7 @@ class EmailPCAPAnalyzer:
 
             session_map[key]['packet_count'] += 1
             session_map[key]['end_time'] = pkt['timestamp']
-            session_map[key]['stream_ids'].add(pkt.get('stream_id', 0))
+            session_map[key]['stream_ids'].add(stream_id_val)
 
         self.sessions = list(session_map.values())
 
@@ -445,11 +496,16 @@ class EmailPCAPAnalyzer:
             session['state_history'] = history
 
     def _clean_sessions(self):
-        """Return sessions without internal raw packet structures"""
+        """Return sessions with attached stream_id and without internal raw packet sets"""
         clean = []
         for s in self.sessions:
+            stream_id_val = s.get('stream_id')
+            if stream_id_val is None and s.get('stream_ids'):
+                stream_id_val = sorted(s['stream_ids'])[0]
+
             clean.append({
                 'id': s['id'],
+                'stream_id': stream_id_val,
                 'protocol': s['protocol'],
                 'src': f"{s['src']}:{s['src_port']}",
                 'dst': f"{s['dst']}:{s['dst_port']}",
@@ -501,14 +557,14 @@ class EmailPCAPAnalyzer:
         print(f"{'='*70}")
         print(f"  SECURITY ASSESSMENT REPORT")
         print(f"{'='*70}")
-        print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}]")
+        print(f"\n  Risk Score: {risk['risk_score']}/100  [{risk['risk_level']}] (Grade: {risk.get('risk_grade', 'N/A')})")
         print(f"  Email Packets: {summary['total_packets']}")
         print(f"  Encrypted: {summary['encrypted_packets']}  |  Plaintext: {summary['plaintext_packets']}")
         print(f"  Protocols: {', '.join(summary['protocols_detected']) or 'None'}")
         print(f"  TLS Versions: {', '.join(summary['tls_versions'].keys()) or 'None'}")
         
         if ai_summary:
-            print(f"\n  🤖 AI EXECUTIVE BRIEFING:")
+            print(f"\n  [*] AI EXECUTIVE BRIEFING:")
             print(f"  {ai_summary}")
 
         if findings:
@@ -516,12 +572,12 @@ class EmailPCAPAnalyzer:
             print(f"  FINDINGS & AI INSIGHTS ({len(findings)})")
             print(f"  {'─'*66}")
             for f in findings:
-                icon = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢'}.get(f['severity'], '⚪')
+                icon = {'CRITICAL': '[!]', 'HIGH': '[*]', 'MEDIUM': '[-]', 'LOW': '[+]'}.get(f['severity'], '[?]')
                 print(f"\n  {icon} [{f['severity']}] {f['title']}")
                 print(f"     Evidence: {f['evidence']}")
                 if f.get('ai_explanation'):
-                    print(f"     🤖 AI Analysis: {f['ai_explanation']}")
+                    print(f"     AI Analysis: {f['ai_explanation']}")
         else:
-            print(f"\n  ✅ No security issues detected!")
+            print(f"\n  [+] No security issues detected!")
 
         print(f"\n{'='*70}\n")

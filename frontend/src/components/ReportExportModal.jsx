@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { downloadReport } from '../utils/api';
 
 export function ReportExportModal({ isOpen, onClose, results }) {
   // Keydown event listener for Escape key and locking body scroll
@@ -38,6 +39,15 @@ export function ReportExportModal({ isOpen, onClose, results }) {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to export JSON report:', err);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      await downloadReport(captureId, 'pdf');
+    } catch (err) {
+      console.error('Failed to download PDF report:', err);
+      alert('PDF export failed. Is the backend running?');
     }
   };
 
@@ -171,6 +181,54 @@ export function ReportExportModal({ isOpen, onClose, results }) {
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Download JSON Report</div>
               <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.4)' }}>
                 Export raw findings and capture metadata as standard JSON.
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={handleDownloadPdf}
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              color: '#fff',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: '8px',
+                background: 'rgba(248, 113, 113, 0.15)',
+                border: '1px solid rgba(248, 113, 113, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#f87171',
+                fontSize: 18,
+              }}
+            >
+              <i className="fa-solid fa-file-pdf"></i>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Download PDF Report</div>
+              <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.4)' }}>
+                Server-generated PDF of the full forensic report.
               </div>
             </div>
           </button>

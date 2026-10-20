@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const VIDEO_SRC =
@@ -7,6 +7,7 @@ const VIDEO_SRC =
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signUp, signInWithGoogle } = useAuth();
 
   // Mode: 'signin' | 'signup'
@@ -24,6 +25,14 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+
+  useEffect(() => {
+    if (location.state?.error) {
+      setError(location.state.error);
+    } else if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+    }
+  }, [location.state]);
 
   const validateEmail = (val) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);

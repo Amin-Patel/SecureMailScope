@@ -31,7 +31,7 @@ const DEFAULT_SAMPLES = [
     name: "Comprehensive SIH Demo (Multi-Protocol)",
     description: "Multi-protocol email capture across SMTP, IMAP, and POP3 with TLS 1.2 and plaintext traffic.",
     file: "SecureMailScope_SIHDemo.pcap",
-    expected_risk: "MEDIUM (37/100)"
+    expected_risk: "CRITICAL (100/100, grade F)"
   }
 ];
 
@@ -161,11 +161,13 @@ export function NewAnalysis() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {displaySamples.map((sample) => {
-                  const isCritical = sample.expected_risk === 'CRITICAL';
-                  const bg = isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)';
-                  const border = isCritical ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)';
-                  const color = isCritical ? '#f87171' : '#fbbf24';
-                  const dotBg = isCritical ? '#ef4444' : '#f59e0b';
+                  const exp = (sample.expected_risk || '').toUpperCase();
+                  const isCritical = exp.includes('CRITICAL');
+                  const isClean = exp.includes('CLEAN') || exp.includes('LOW (0/100)') || exp.includes('GRADE A');
+                  const bg = isCritical ? 'rgba(239, 68, 68, 0.1)' : isClean ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)';
+                  const border = isCritical ? '1px solid rgba(239, 68, 68, 0.25)' : isClean ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)';
+                  const color = isCritical ? '#f87171' : isClean ? '#34d399' : '#fbbf24';
+                  const dotBg = isCritical ? '#ef4444' : isClean ? '#10b981' : '#f59e0b';
                   
                   return (
                     <button

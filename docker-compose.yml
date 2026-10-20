@@ -1,0 +1,44 @@
+# ============================================================
+# SecureMailScope — Docker Compose
+# Production deployment: FastAPI backend + optional nginx frontend
+# ============================================================
+# Usage:
+#   docker compose --env-file backend/.env up -d
+# ============================================================
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: securemailscope_backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"   # Bind to localhost only — nginx proxies externally
+    env_file:
+      - backend/.env            # All secrets live here; never committed to git
+    environment:
+      # These can also be overridden inline or via CI/CD secrets
+      - ALLOWED_ORIGINS=https://mailscope.dpdns.org
+    volumes:
+      # Persist uploads and results across container restarts
+      - backend_uploads:/app/uploads
+      - backend_results:/app/results
+      - backend_knowledge:/app/knowledge_store
+      - backend_threat_intel:/app/threat_intel
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  backend_uploads:
+    driver: local
+  backend_results:
+    driver: local
+  backend_knowledge:
+    driver: local
+  backend_threat_intel:
+    driver: local

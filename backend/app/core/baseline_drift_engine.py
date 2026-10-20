@@ -595,3 +595,18 @@ class BaselineDriftEngine:
                 continue
         comps.sort(key=lambda x: str(x.get("compared_at") or ""), reverse=True)
         return comps
+
+
+_drift_engine_instance: Optional[BaselineDriftEngine] = None
+
+
+def get_drift_engine() -> BaselineDriftEngine:
+    global _drift_engine_instance
+    if _drift_engine_instance is None:
+        _drift_engine_instance = BaselineDriftEngine()
+    return _drift_engine_instance
+
+
+# Alias for backward compatibility
+CryptographicDriftEngine = BaselineDriftEngine
+

@@ -21,7 +21,8 @@ function findFiles(dir, filterRegex) {
 }
 
 test('Part A1 — Zero visible USP labels in frontend components and pages', () => {
-  const srcDir = path.resolve(process.cwd(), 'frontend/src');
+  const baseDir = fs.existsSync(path.resolve('src')) ? path.resolve('.') : path.resolve('frontend');
+  const srcDir = path.join(baseDir, 'src');
   const files = findFiles(srcDir, /\.(jsx|js|html)$/);
 
   const visibleUspPattern = />\s*USP\s*\d+\s*<|["']Evidence Assessment \(USP \d+\)["']|["']\s*USP\s*\d+\s*["']/gi;
@@ -54,8 +55,9 @@ test('Part A1 — Zero visible USP labels in frontend components and pages', () 
 });
 
 test('Part A2 — Assessment sections adopt SecureMailScope glass-card theme', () => {
-  const ebaPath = path.resolve(process.cwd(), 'frontend/src/components/EvidenceBasedAssessment.jsx');
-  const csaPath = path.resolve(process.cwd(), 'frontend/src/components/CryptographicStateAssessment.jsx');
+  const baseDir = fs.existsSync(path.resolve('src')) ? path.resolve('.') : path.resolve('frontend');
+  const ebaPath = path.join(baseDir, 'src/components/EvidenceBasedAssessment.jsx');
+  const csaPath = path.join(baseDir, 'src/components/CryptographicStateAssessment.jsx');
 
   const ebaContent = fs.readFileSync(ebaPath, 'utf8');
   const csaContent = fs.readFileSync(csaPath, 'utf8');
@@ -70,9 +72,10 @@ test('Part A2 — Assessment sections adopt SecureMailScope glass-card theme', (
 });
 
 test('Part B — Evidence navigation parameters standardized to &node=', () => {
-  const ebaPath = path.resolve(process.cwd(), 'frontend/src/components/EvidenceBasedAssessment.jsx');
-  const epPath = path.resolve(process.cwd(), 'frontend/src/pages/EvidenceProvenance.jsx');
-  const pgPath = path.resolve(process.cwd(), 'frontend/src/components/ProvenanceGraph.jsx');
+  const baseDir = fs.existsSync(path.resolve('src')) ? path.resolve('.') : path.resolve('frontend');
+  const ebaPath = path.join(baseDir, 'src/components/EvidenceBasedAssessment.jsx');
+  const epPath = path.join(baseDir, 'src/pages/EvidenceProvenance.jsx');
+  const pgPath = path.join(baseDir, 'src/components/ProvenanceGraph.jsx');
 
   const ebaContent = fs.readFileSync(ebaPath, 'utf8');
   const epContent = fs.readFileSync(epPath, 'utf8');

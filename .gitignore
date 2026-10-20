@@ -37,6 +37,9 @@ backend/results/
 /test/
 test_output.txt
 /archive/
+backend/knowledge_store/
+backend/threat_intel/
+backend/data/drift_history/
 
 # PCAP captures (exclude uploads, but allow demo files in test-data)
 *.pcap

@@ -6,7 +6,13 @@ through deterministic analysis rules and baselines to final security findings.
 """
 
 import os
+import re
 import hashlib
+
+try:
+    from app.core.cipher_suites import lookup as lookup_cipher_suite
+except ImportError:  # pragma: no cover - import style depends on entry point
+    from core.cipher_suites import lookup as lookup_cipher_suite
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
 
@@ -120,6 +126,13 @@ class ProvenanceGraphBuilder:
                 'is_direct': is_direct,
                 'metadata': metadata or {}
             })
+
+    @staticmethod
+    def _extract_cn(subject: str) -> str:
+        """Pull the Common Name out of a distinguished name, or '' if absent."""
+        if subject and 'CN=' in subject:
+            return subject.split('CN=')[-1].split(',')[0].strip()
+        return ''
 
     def _compute_file_hash(self, filename: str) -> Dict[str, Any]:
         """Attempt to locate capture file and compute real SHA-256 hash."""
@@ -386,7 +399,10 @@ class ProvenanceGraphBuilder:
         # ── 5. CERTIFICATE NODES ──
         cert_map = {}
         for i, cert in enumerate(certificates):
-            c_frame = cert.get('frame', i + 1)
+            # The analysis pipeline emits certificates with 'frame_number'; accept
+            # either key so provenance nodes cite the real capture frame rather
+            # than falling back to the list index.
+            c_frame = cert.get('frame') or cert.get('frame_number') or (i + 1)
             c_id = f"cert:frame_{c_frame}_{i}"
             cert_map[i] = c_id
 
@@ -568,16 +584,23 @@ class ProvenanceGraphBuilder:
                             evidence_linked_for_this_finding.append(hs_node)
 
             elif f_type == 'weak_cipher':
-                # Link handshakes containing weak ciphers
-                weak_codes = {'0x0004', '0x0005', '0x000a', '0x0009', '0x0016'}
+                # Link only the ServerHellos that actually negotiated a weak
+                # suite, decided by the same IANA registry the security engine
+                # uses. Matching every handshake against a hardcoded code list
+                # would cite a ClientHello's offer list as proof of negotiation,
+                # which is the defect F37 describes.
                 for i, hs in enumerate(handshakes):
-                    ciphers = [c.lower() for c in hs.get('cipher_suites', [])]
-                    if any(wc in ciphers or 'rc4' in c or '3des' in c for c in ciphers for wc in weak_codes):
-                        hs_node = handshake_map.get(hs.get('frame', i + 1))
-                        if hs_node:
-                            self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
-                            self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'negotiates weak cipher', is_direct=True)
-                            evidence_linked_for_this_finding.append(hs_node)
+                    if hs.get('handshake_type') != 'ServerHello':
+                        continue
+                    for c in hs.get('cipher_suites', []):
+                        info = lookup_cipher_suite(c)
+                        if info and info['weak']:
+                            hs_node = handshake_map.get(hs.get('frame', i + 1))
+                            if hs_node:
+                                self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                                self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'negotiates weak cipher', is_direct=True)
+                                evidence_linked_for_this_finding.append(hs_node)
+                            break
 
             elif f_type in ['weak_signature', 'insufficient_key_size', 'expired_certificate', 'self_signed_certificate']:
                 # Link matching certificate nodes
@@ -598,6 +621,68 @@ class ProvenanceGraphBuilder:
                             self._add_edge(c_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
                             self._add_edge(c_node, finding_node_id, 'SUPPORTS_FINDING', 'violates PKI policy', is_direct=True)
                             evidence_linked_for_this_finding.append(c_node)
+
+            elif f_type == 'certificate_pki':
+                # The analysis pipeline consolidates per-certificate PKI findings
+                # (expiry, not-yet-valid, self-signed, untrusted chain) under one
+                # type and names the certificate in the title/evidence. Resolve
+                # the exact certificate by cited frame number, else by subject CN.
+                text = f"{finding.get('title', '')} {finding.get('evidence', '')}"
+                cited_frames = {int(m) for m in re.findall(r'[Ff]rame\s+(\d+)', text)}
+                matched_indices = [
+                    i for i, cert in enumerate(certificates)
+                    if (cert.get('frame') or cert.get('frame_number')) in cited_frames
+                ]
+                if not matched_indices:
+                    # The cited frame may be a re-presentation of an already
+                    # de-duplicated certificate; fall back to the subject CN.
+                    matched_indices = [
+                        i for i, cert in enumerate(certificates)
+                        if self._extract_cn(cert.get('subject', ''))
+                        and self._extract_cn(cert.get('subject', '')) in text
+                    ]
+                for i in matched_indices:
+                    c_node = cert_map.get(i)
+                    if c_node:
+                        self._add_edge(c_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                        self._add_edge(c_node, finding_node_id, 'SUPPORTS_FINDING', 'violates PKI policy', is_direct=True)
+                        evidence_linked_for_this_finding.append(c_node)
+
+            elif f_type == 'no_forward_secrecy':
+                # Mirror check_forward_secrecy exactly: ServerHello only, TLS 1.3
+                # skipped (it mandates ephemeral key exchange), and the verdict
+                # taken from the registry's forward_secret flag rather than from
+                # the text of a cipher name. tshark reports cipher suites as hex
+                # codes, so any string test for "DHE" matches nothing and would
+                # link every handshake, ECDHE ones included.
+                for i, hs in enumerate(handshakes):
+                    if hs.get('handshake_type') != 'ServerHello':
+                        continue
+                    if hs.get('tls_version') == 'TLS 1.3':
+                        continue
+                    for c in hs.get('cipher_suites', []):
+                        info = lookup_cipher_suite(c)
+                        if info and not info['forward_secret']:
+                            hs_node = handshake_map.get(hs.get('frame', i + 1))
+                            if hs_node:
+                                self._add_edge(hs_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                                self._add_edge(hs_node, finding_node_id, 'SUPPORTS_FINDING', 'static key exchange, no forward secrecy', is_direct=True)
+                                evidence_linked_for_this_finding.append(hs_node)
+                            break
+
+            elif f_type in ['email_authentication', 'missing_dkim', 'missing_spf', 'missing_dmarc']:
+                # Email-authentication findings cite the stream each message was
+                # observed on; sessions are keyed by that same stream id.
+                cited_streams = set(re.findall(r'stream\s+(\w+)', str(finding.get('evidence', '')), re.IGNORECASE))
+                for s in sessions:
+                    # Sessions carry the TCP stream id the finding cites, which is
+                    # distinct from the session's own id.
+                    if {str(s.get('stream_id')), str(s.get('id'))} & cited_streams:
+                        s_node = session_map.get(s.get('id'))
+                        if s_node:
+                            self._add_edge(s_node, rule_node_id, 'EVALUATED_BY', 'evaluated by rule', is_direct=True)
+                            self._add_edge(s_node, finding_node_id, 'SUPPORTS_FINDING', 'carries the assessed message', is_direct=True)
+                            evidence_linked_for_this_finding.append(s_node)
 
             # Record in traceability index
             if evidence_linked_for_this_finding:
