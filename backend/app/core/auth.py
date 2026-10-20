@@ -122,7 +122,7 @@ def decode_and_verify_supabase_jwt(token: str) -> Dict[str, Any]:
                 )
         else:
             # HS256 symmetric secret
-            verification_key = SUPABASE_JWT_SECRET or os.getenv("JWT_SECRET")
+            verification_key = os.getenv("SUPABASE_JWT_SECRET") or os.getenv("JWT_SECRET") or SUPABASE_JWT_SECRET
             if not verification_key:
                 logger.error("Neither SUPABASE_JWT_SECRET nor JWT_SECRET is configured for HS256 verification.")
                 raise HTTPException(
@@ -211,14 +211,11 @@ async def get_optional_user(
 ) -> Optional[Dict[str, Any]]:
     """
     FastAPI dependency for endpoints that allow public/demo access or authenticated access.
-    Returns user dict if valid token provided, else None.
+    Returns user dict if valid token provided, else None. Raises 401 if token is provided but invalid.
     """
     if not credentials or not credentials.credentials:
         return None
-    try:
-        return decode_and_verify_supabase_jwt(credentials.credentials)
-    except HTTPException:
-        return None
+    return decode_and_verify_supabase_jwt(credentials.credentials)
 
 
 async def require_admin_role(

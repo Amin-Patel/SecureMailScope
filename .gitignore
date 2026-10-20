@@ -11,7 +11,6 @@ env/
 .env
 .env.*
 !.env.example
-frontend/.env.production
 
 # Node
 node_modules/
@@ -28,16 +27,27 @@ pnpm-debug.log*
 Thumbs.db
 
 # Runtime / generated files
-uploads/
-reports/
-dataset/
-test/
+/uploads/
+backend/uploads/
+/results/
+backend/results/
+/reports/
+!docs/reports/
+/dataset/
+/test/
 test_output.txt
+/archive/
+backend/knowledge_store/
+backend/threat_intel/
+backend/data/drift_history/
 
-# PCAP captures
+# PCAP captures (exclude uploads, but allow demo files in test-data)
 *.pcap
 *.pcapng
 *.cap
+!backend/test-data/*.pcap
+!backend/test-data/*.pcapng
+!backend/test-data/*.cap
 
 # Frontend
 frontend/node_modules/
@@ -46,12 +56,3 @@ frontend/dist/
 # Backend
 backend/__pycache__/
 backend/venv/
-backend/knowledge_store/
-backend/app/knowledge_base/sources/pending/
-backend/watch/
-backend/threat_intel/
-backend/results/
-
-# Audit / scratch docs (not part of source)
-CURRENT_STATE_AUDIT.md
-

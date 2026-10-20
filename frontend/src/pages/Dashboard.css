@@ -4,8 +4,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 1.25rem;
-  padding: clamp(16px, 2.5vw, 28px);
+  gap: 2rem;
+  padding: clamp(16px, 3vw, 32px);
   min-height: 100vh;
   color: var(--text);
   position: relative;
@@ -16,9 +16,9 @@
 /* Two-column layout on wider screens */
 .dashboard-body {
   display: flex;
-  gap: 1.25rem;
+  gap: 1.5rem;
   width: 100%;
-  max-width: 1360px;
+  max-width: 1200px;
   align-items: flex-start;
 }
 
@@ -28,12 +28,8 @@
 }
 
 .side-panel {
-  width: 340px;
+  width: 320px;
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 1rem;
 }
 
 @media (max-width: 900px) {
@@ -42,21 +38,7 @@
   }
   .side-panel {
     width: 100%;
-    position: static;
   }
-}
-
-/* Grouped email auth cards */
-.email-auth-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
-}
-
-.email-auth-grid .glass-card {
-  margin-bottom: 0;
-  height: 100%;
 }
 
 /* Glass card — higher opacity + blur for text contrast */
@@ -206,9 +188,6 @@
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .analysis-meta {

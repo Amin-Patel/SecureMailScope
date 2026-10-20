@@ -8,7 +8,7 @@ const VIDEO_SRC =
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
 
   // Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState('signin');
@@ -26,22 +26,13 @@ export function Login() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Capture any errors passed via route state (e.g. from OAuth redirect or timeout)
   useEffect(() => {
     if (location.state?.error) {
       setError(location.state.error);
-    }
-    if (location.state?.message) {
+    } else if (location.state?.message) {
       setSuccessMessage(location.state.message);
     }
   }, [location.state]);
-
-  // If already authenticated, redirect to dashboard
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   const validateEmail = (val) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
@@ -86,25 +77,13 @@ export function Login() {
 
     try {
       if (authMode === 'signup') {
-        const data = await signUp({ email: trimmedEmail, password, fullName: fullName.trim() });
-        if (data?.session) {
-          // Email confirmation disabled: user is signed in immediately
-          localStorage.setItem('sms_auth', 'true');
-          localStorage.setItem('sms_email', trimmedEmail);
-          navigate('/dashboard', { replace: true });
-        } else if (data?.user?.identities && data.user.identities.length === 0) {
-          setError('An account with this email address already exists. Please sign in instead.');
-          setAuthMode('signin');
-        } else {
-          // Email confirmation enabled: verification link sent
-          setSuccessMessage(
-            'Account created successfully! If email confirmation is enabled on your project, please verify your email before signing in.'
-          );
-          setAuthMode('signin');
-          setPassword('');
-          setConfirmPassword('');
-          setFullName('');
-        }
+        await signUp({ email: trimmedEmail, password, fullName: fullName.trim() });
+        // After signup, redirect to sign-in page
+        setSuccessMessage('Account created successfully! Please sign in with your credentials.');
+        setAuthMode('signin');
+        setPassword('');
+        setConfirmPassword('');
+        setFullName('');
       } else {
         await signIn({ email: trimmedEmail, password });
         localStorage.setItem('sms_auth', 'true');
@@ -112,7 +91,26 @@ export function Login() {
         navigate('/dashboard', { replace: true });
       }
     } catch (err) {
-      setError(err.message || 'Unable to complete request. Please try again.');
+      setError(err.message || 'Unable to sign in right now. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLocalDemoLogin = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    setLoading(true);
+    try {
+      const email = 'auditor@securemailscope.local';
+      await signIn({ email, password: 'local-demo-password' });
+      localStorage.setItem('sms_auth', 'true');
+      localStorage.setItem('sms_email', email);
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      localStorage.setItem('sms_auth', 'true');
+      localStorage.setItem('sms_email', 'auditor@securemailscope.local');
+      navigate('/dashboard', { replace: true });
     } finally {
       setLoading(false);
     }
@@ -123,10 +121,20 @@ export function Login() {
     setSuccessMessage(null);
     setLoading(true);
 
+    // If running in local development, Supabase OAuth is configured with the production Site URL (mailscope.dpdns.org).
+    // Intercept to prevent unexpected external redirects and offer one-click local login instead.
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      setError(
+        'Google OAuth redirects to the remote project Site URL (mailscope.dpdns.org). Please click "Continue as Local Auditor (Demo)" below or sign in with email.'
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err.message || 'Google sign-in could not be initiated. Please sign in with email.');
+      setError(err.message || 'Google sign-in is not yet configured for this workspace. Please sign in with email.');
       setLoading(false);
     }
   };
@@ -889,6 +897,45 @@ export function Login() {
                 />
               </svg>
               Continue with Google
+            </button>
+
+            {/* One-Click Local Auditor / Demo Mode Button */}
+            <button
+              type="button"
+              onClick={handleLocalDemoLogin}
+              disabled={loading}
+              style={{
+                width: '100%',
+                marginTop: '12px',
+                padding: '11px 20px',
+                borderRadius: '999px',
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.22) 100%)',
+                border: '1.5px solid rgba(165, 180, 252, 0.45)',
+                color: '#e0e7ff',
+                fontFamily: 'var(--font-sans)',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(99, 102, 241, 0.15)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.32) 0%, rgba(139, 92, 246, 0.36) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(165, 180, 252, 0.8)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.22) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(165, 180, 252, 0.45)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <i className="fa-solid fa-shield-halved" style={{ color: '#818cf8' }} />
+              <span>Continue as Local Auditor (Demo)</span>
             </button>
 
             {/* Bottom Mode Switch Link */}

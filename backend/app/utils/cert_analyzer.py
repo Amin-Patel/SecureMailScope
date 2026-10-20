@@ -596,3 +596,107 @@ class CertificateAnalyzer:
                     seen.add(c['serial_number'])
                     flat_certs.append(c)
         return flat_certs
+
+    @staticmethod
+    def parse_der_certificate(
+        der_bytes: bytes,
+        frame_num: str = "",
+        frame_time: str = "",
+        src_ip: str = "",
+        dst_ip: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Parse raw X.509 DER bytes into a structured certificate dictionary.
+        Extracts genuine key bit length, public key algorithm, validity, and subject/issuer DNs.
+        Preserves uncertainty: if parsing fails, key_size and algorithm remain None (no default constants).
+        """
+        try:
+            cert = x509.load_der_x509_certificate(der_bytes)
+        except Exception as e:
+            return {
+                'frame': frame_num,
+                'timestamp': frame_time,
+                'src': src_ip,
+                'dst': dst_ip,
+                'subject': 'Unknown (Unparseable DER)',
+                'issuer': 'Unknown (Unparseable DER)',
+                'serial': '',
+                'not_before': '',
+                'not_after': '',
+                'signature_algorithm': 'Unknown',
+                'public_key_algorithm': None,
+                'key_size': None,
+                'is_self_signed': False,
+                'is_expired': False,
+                'parse_error': str(e)
+            }
+
+        # Subject & Issuer formatting
+        try:
+            subject = cert.subject.rfc4514_string()
+        except Exception:
+            subject = ', '.join(f"{attr.oid._name}={attr.value}" for attr in cert.subject)
+
+        try:
+            issuer = cert.issuer.rfc4514_string()
+        except Exception:
+            issuer = ', '.join(f"{attr.oid._name}={attr.value}" for attr in cert.issuer)
+
+        # Validity dates
+        try:
+            not_before = cert.not_valid_before_utc.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+        except Exception:
+            not_before = cert.not_valid_before.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+
+        try:
+            not_after = cert.not_valid_after_utc.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            expiry_utc = cert.not_valid_after_utc
+        except Exception:
+            not_after = cert.not_valid_after.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            expiry_utc = cert.not_valid_after.replace(tzinfo=timezone.utc)
+
+        is_expired = expiry_utc < datetime.now(timezone.utc)
+
+        # Public Key & Genuine Bit Length Extraction
+        pub_key = cert.public_key()
+        key_size = None
+        pub_key_algo = None
+
+        if isinstance(pub_key, rsa.RSAPublicKey):
+            pub_key_algo = 'RSA'
+            key_size = pub_key.key_size
+        elif isinstance(pub_key, ec.EllipticCurvePublicKey):
+            pub_key_algo = 'EC'
+            key_size = pub_key.key_size
+        elif isinstance(pub_key, dsa.DSAPublicKey):
+            pub_key_algo = 'DSA'
+            key_size = pub_key.key_size
+        elif isinstance(pub_key, ed25519.Ed25519PublicKey):
+            pub_key_algo = 'Ed25519'
+            key_size = 256
+        else:
+            pub_key_algo = type(pub_key).__name__
+            key_size = getattr(pub_key, 'key_size', None)
+
+        # Signature algorithm
+        sig_algo = getattr(cert.signature_algorithm_oid, '_name', str(cert.signature_algorithm_oid))
+
+        # Self-signed determination
+        is_self_signed = (cert.subject == cert.issuer)
+
+        return {
+            'frame': frame_num,
+            'timestamp': frame_time,
+            'src': src_ip,
+            'dst': dst_ip,
+            'subject': subject,
+            'issuer': issuer,
+            'serial': hex(cert.serial_number),
+            'not_before': not_before,
+            'not_after': not_after,
+            'signature_algorithm': sig_algo,
+            'public_key_algorithm': pub_key_algo,
+            'key_size': key_size,
+            'is_self_signed': is_self_signed,
+            'is_expired': is_expired,
+        }

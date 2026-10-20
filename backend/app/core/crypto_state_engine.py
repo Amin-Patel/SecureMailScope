@@ -521,10 +521,11 @@ class CryptographicStateEngine:
 
         weak_keys = []
         valid_keys = []
+        unobserved_keys = []
         for c in self.certificates:
             algo = (c.get('public_key_algorithm') or '').lower()
-            size = c.get('key_size', 0)
-            if size > 0:
+            size = c.get('key_size')
+            if size and size > 0:
                 is_weak = False
                 for a, min_sz in MIN_KEY_SIZES.items():
                     if a in algo and size < min_sz:
@@ -533,6 +534,8 @@ class CryptographicStateEngine:
                         break
                 if not is_weak:
                     valid_keys.append(f"{algo.upper()} {size}-bit")
+            else:
+                unobserved_keys.append(c.get('subject') or 'Unknown Cert')
 
         if weak_keys:
             return self._build_rule_result(
@@ -541,6 +544,15 @@ class CryptographicStateEngine:
                 expected="RSA >= 2048 bits, EC >= 224 bits",
                 explanation="Certificate public keys do not meet NIST recommended minimum security bit strengths, risking factorisation.",
                 evidence_refs=[f"cert:{c.get('id', i)}" for i, c in enumerate(self.certificates)]
+            )
+
+        if not valid_keys and unobserved_keys:
+            return self._build_rule_result(
+                rule_id, meta, RuleStatus.UNKNOWN,
+                observed="Public key length unparsed or omitted from wire certificate",
+                expected="RSA >= 2048 bits, EC >= 224 bits",
+                explanation="Certificate public key sizes could not be derived from the extracted certificate evidence.",
+                missing_prereqs=["Certificate SubjectPublicKeyInfo key size"]
             )
 
         return self._build_rule_result(

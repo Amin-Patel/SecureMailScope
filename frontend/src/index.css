@@ -1637,21 +1637,6 @@ body {
   white-space: pre;
 }
 
-/* Scrollable Security Findings list — webkit scrollbar styling */
-.findings-scroll::-webkit-scrollbar {
-  width: 4px;
-}
-.findings-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.findings-scroll::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.4);
-  border-radius: 999px;
-}
-.findings-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.65);
-}
-
 /* Sub-tabs in Session Drawer */
 .sub-tabs {
   display: flex;

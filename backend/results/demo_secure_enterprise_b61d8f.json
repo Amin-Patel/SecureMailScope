@@ -1,0 +1,80 @@
+{
+  "success": true,
+  "capture_id": "demo_secure_enterprise_b61d8f",
+  "filename": "secure_mail.pcap",
+  "summary": {
+    "total_packets": 33,
+    "encrypted_packets": 33,
+    "plaintext_packets": 0,
+    "encryption_ratio": 1.0,
+    "protocols_detected": [
+      "IMAPS",
+      "SMTPS"
+    ],
+    "tls_versions": {
+      "TLS 1.2": 1
+    },
+    "session_count": 2,
+    "handshake_count": 1,
+    "certificate_count": 0,
+    "risk_score": 0,
+    "risk_level": "LOW"
+  },
+  "ai_summary": "STRONG SECURITY POSTURE: The inspected mail traffic demonstrates robust cryptographic controls with a low Risk Score of 0/100. Encryption standards and handshake parameters comply with modern secure transport recommendations.",
+  "findings": [],
+  "risk": {
+    "risk_score": 0,
+    "risk_level": "LOW",
+    "finding_score": 0,
+    "encryption_penalty": 0.0,
+    "critical_count": 0,
+    "high_count": 0,
+    "medium_count": 0,
+    "low_count": 0
+  },
+  "sessions": [
+    {
+      "id": "session_1",
+      "protocol": "SMTPS",
+      "src": "192.168.1.50:49152",
+      "dst": "198.51.100.25:465",
+      "packet_count": 20,
+      "encrypted": true,
+      "tls_versions": [
+        "TLS 1.2"
+      ]
+    },
+    {
+      "id": "session_2",
+      "protocol": "IMAPS",
+      "src": "192.168.1.50:49153",
+      "dst": "198.51.100.25:993",
+      "packet_count": 13,
+      "encrypted": true,
+      "tls_versions": [
+        "TLS 1.2"
+      ]
+    }
+  ],
+  "certificates": [],
+  "tls_handshakes": [
+    {
+      "frame": "5",
+      "timestamp": "2026-08-31T20:12:01.297806000+0530",
+      "src": "198.51.100.25",
+      "dst": "192.168.1.50",
+      "src_port": "465",
+      "dst_port": "49152",
+      "tls_version": "TLS 1.2",
+      "handshake_type": "ServerHello",
+      "cipher_suites": [
+        "0x1302"
+      ],
+      "sni": ""
+    }
+  ],
+  "upload_timestamp": "2026-08-31T20:12:30.369149",
+  "original_filename": "secure_mail.pcap",
+  "file_size": 4858,
+  "status": "completed"
+}

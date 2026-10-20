@@ -377,10 +377,11 @@ class EvidenceAssessmentEngine:
 
         weak_keys = []
         valid_keys = []
+        unobserved_keys = []
         for c in self.certificates:
             algo = (c.get('public_key_algorithm') or '').lower()
-            size = c.get('key_size', 0)
-            if size > 0:
+            size = c.get('key_size')
+            if size and size > 0:
                 is_weak = False
                 for a, min_sz in MIN_KEY_SIZES.items():
                     if a in algo and size < min_sz:
@@ -389,6 +390,8 @@ class EvidenceAssessmentEngine:
                         break
                 if not is_weak:
                     valid_keys.append(f"{algo.upper()} {size}-bit")
+            else:
+                unobserved_keys.append(c.get('subject') or 'Unknown Cert')
 
         if weak_keys:
             return self._build_item(
@@ -402,6 +405,23 @@ class EvidenceAssessmentEngine:
                 outcome=AssessmentOutcome.VIOLATED,
                 explanation="Certificate public key length does not meet NIST recommended minimum security bit strength, vulnerable to factorization.",
                 evidence_refs=[f"cert:{c.get('id', i)}" for i, c in enumerate(self.certificates)],
+                connection_scope="Server Certificate",
+                extraction_source="X.509 SubjectPublicKeyInfo Field"
+            )
+
+        if not valid_keys and unobserved_keys:
+            return self._build_item(
+                req_id, prop, category,
+                evidence_status=EvidenceStatus.UNKNOWN,
+                observed_value="Unobserved / Unknown key length",
+                observed_details="Public key size could not be extracted from certificate wire evidence.",
+                expected_value="RSA >= 2048-bit, EC >= 224-bit",
+                policy_source="NIST SP 800-57 Part 1 Section 5.6",
+                comparison_rule="key_size >= min_size",
+                outcome=AssessmentOutcome.INDETERMINATE,
+                explanation="Cannot determine key length compliance because public key parameters were missing or unparseable.",
+                unknown_reason="Public key length missing or unparseable from certificate records",
+                missing_prereqs=["Certificate SubjectPublicKeyInfo key size"],
                 connection_scope="Server Certificate",
                 extraction_source="X.509 SubjectPublicKeyInfo Field"
             )
@@ -849,6 +869,7 @@ class EvidenceAssessmentEngine:
         """Build standardized assessment record"""
         return {
             "id": req_id,
+            "req_id": req_id,
             "property_name": property_name,
             "category": category,
             "evidence_status": evidence_status,

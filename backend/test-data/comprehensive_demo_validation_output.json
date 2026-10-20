@@ -1,0 +1,261 @@
+﻿{
+    "success":  true,
+    "capture_id":  "demo_comprehensive_demo_160da1",
+    "filename":  "SecureMailScope_Comprehensive_Demo.pcap",
+    "summary":  {
+                    "total_packets":  25,
+                    "encrypted_packets":  15,
+                    "plaintext_packets":  10,
+                    "encryption_ratio":  0.6,
+                    "protocols_detected":  [
+                                               "SMTP-Submission",
+                                               "SMTP",
+                                               "SMTPS",
+                                               "IMAPS",
+                                               "POP3S"
+                                           ],
+                    "tls_versions":  {
+                                         "TLS 1.0":  2,
+                                         "TLS 1.1":  2,
+                                         "SSL 3.0":  2
+                                     },
+                    "session_count":  5,
+                    "handshake_count":  6,
+                    "certificate_count":  0,
+                    "risk_score":  82,
+                    "risk_level":  "CRITICAL"
+                },
+    "ai_summary":  "CRITICAL POSTURE ALERT: Network analysis identified high-severity cryptographic vulnerabilities resulting in a Risk Score of 82/100. Key risks include unencrypted email transmissions and non-compliant protocol negotiations. Immediate implementation of TLS 1.3 and STARTTLS enforcement is strongly advised to prevent data leakage.",
+    "findings":  [
+                     {
+                         "id":  "SMS-001",
+                         "severity":  "CRITICAL",
+                         "type":  "plaintext_protocol",
+                         "title":  "Unencrypted Email Protocol Detected",
+                         "description":  "10 out of 25 email packets (40.0%) are transmitted in plaintext using SMTP-Submission, SMTP. Credentials and email content are visible to any network observer.",
+                         "evidence":  "10 plaintext packets detected on protocols: SMTP-Submission, SMTP",
+                         "remediation":  "1. Enable TLS encryption for all email services\n2. Use SMTPS (port 465), IMAPS (port 993), POP3S (port 995)\n3. Enforce STARTTLS for SMTP submission (port 587)\n4. Disable plaintext authentication",
+                         "ai_explanation":  "Transmitting email traffic over cleartext protocols allows active or passive network eavesdroppers to intercept sensitive communications, exfiltrate credentials via MITM attacks, and violate regulatory mandates (such as GDPR, HIPAA, and PCI DSS).",
+                         "ai_confidence":  "DETERMINISTIC_BASELINE"
+                     },
+                     {
+                         "id":  "SMS-002",
+                         "severity":  "CRITICAL",
+                         "type":  "deprecated_protocol",
+                         "title":  "SSL 3.0 Detected (POODLE Vulnerable)",
+                         "description":  "SSL 3.0 was detected in 2 handshake(s). SSL 3.0 is vulnerable to the POODLE attack (CVE-2014-3566) and has been deprecated since RFC 7568 (2015).",
+                         "evidence":  "2 TLS handshakes using SSL 3.0",
+                         "remediation":  "1. Disable SSL 3.0 on all mail servers immediately\n2. Configure minimum TLS version to 1.2\n3. Test with: openssl s_client -connect mail.example.com:465 -tls1_2",
+                         "ai_explanation":  "Deprecated cryptographic protocols (SSL 3.0, TLS 1.0/1.1) lack modern cipher suites and are susceptible to protocol-downgrade attacks and cryptanalytic vulnerabilities (e.g., POODLE, BEAST). Modern standards mandate TLS 1.2+.",
+                         "ai_confidence":  "DETERMINISTIC_BASELINE"
+                     },
+                     {
+                         "id":  "SMS-003",
+                         "severity":  "CRITICAL",
+                         "type":  "deprecated_protocol",
+                         "title":  "TLS 1.0 Detected (Deprecated)",
+                         "description":  "TLS 1.0 was detected in 2 handshake(s). TLS 1.0 is deprecated per RFC 8996 (2021) and is non-compliant with PCI DSS 3.2+.",
+                         "evidence":  "2 TLS handshakes using TLS 1.0",
+                         "remediation":  "1. Disable TLS 1.0 on all mail servers\n2. Set minimum TLS version to 1.2\n3. Update mail server configuration (Postfix/Dovecot/Exchange)",
+                         "ai_explanation":  "Deprecated cryptographic protocols (SSL 3.0, TLS 1.0/1.1) lack modern cipher suites and are susceptible to protocol-downgrade attacks and cryptanalytic vulnerabilities (e.g., POODLE, BEAST). Modern standards mandate TLS 1.2+.",
+                         "ai_confidence":  "DETERMINISTIC_BASELINE"
+                     },
+                     {
+                         "id":  "SMS-004",
+                         "severity":  "HIGH",
+                         "type":  "deprecated_protocol",
+                         "title":  "TLS 1.1 Detected (Deprecated)",
+                         "description":  "TLS 1.1 was detected in 2 handshake(s). TLS 1.1 is deprecated per RFC 8996 (2021). Major browsers and mail providers have dropped support.",
+                         "evidence":  "2 TLS handshakes using TLS 1.1",
+                         "remediation":  "1. Disable TLS 1.1 on all mail servers\n2. Use TLS 1.2 or TLS 1.3 only\n3. Verify with: nmap --script ssl-enum-ciphers -p 465 mail.example.com",
+                         "ai_explanation":  "Deprecated cryptographic protocols (SSL 3.0, TLS 1.0/1.1) lack modern cipher suites and are susceptible to protocol-downgrade attacks and cryptanalytic vulnerabilities (e.g., POODLE, BEAST). Modern standards mandate TLS 1.2+.",
+                         "ai_confidence":  "DETERMINISTIC_BASELINE"
+                     },
+                     {
+                         "id":  "SMS-005",
+                         "severity":  "CRITICAL",
+                         "type":  "weak_cipher",
+                         "title":  "Weak Cipher Suites Detected",
+                         "description":  "The following weak cipher suites were offered or selected: 0x000a, 0x0004, 0x0005. These ciphers are vulnerable to known attacks (BEAST, SWEET32, RC4 biases).",
+                         "evidence":  "Weak ciphers: 0x000a, 0x0004, 0x0005",
+                         "remediation":  "1. Remove all RC4, DES, 3DES, NULL, and EXPORT ciphers\n2. Prioritize AEAD ciphers: AES-GCM, ChaCha20-Poly1305\n3. Use TLS 1.3 which only allows strong ciphers\n4. Test with: testssl.sh mail.example.com",
+                         "ai_explanation":  "The negotiated cipher suites utilize legacy ciphers (e.g., RC4, 3DES, CBC-mode ciphers) that suffer from known mathematical weaknesses, enabling plaintext recovery via collision or padding-oracle exploits.",
+                         "ai_confidence":  "DETERMINISTIC_BASELINE"
+                     }
+                 ],
+    "risk":  {
+                 "risk_score":  82,
+                 "risk_level":  "CRITICAL",
+                 "finding_score":  70,
+                 "encryption_penalty":  12.0,
+                 "critical_count":  4,
+                 "high_count":  1,
+                 "medium_count":  0,
+                 "low_count":  0
+             },
+    "sessions":  [
+                     {
+                         "id":  "session_1",
+                         "protocol":  "SMTP",
+                         "src":  "192.168.1.100:50001",
+                         "dst":  "192.168.1.200:25",
+                         "packet_count":  5,
+                         "encrypted":  false,
+                         "tls_versions":  [
+                                              "TLS 1.0",
+                                              "SSL 3.0",
+                                              "TLS 1.1"
+                                          ]
+                     },
+                     {
+                         "id":  "session_2",
+                         "protocol":  "IMAPS",
+                         "src":  "192.168.1.100:50002",
+                         "dst":  "192.168.1.200:993",
+                         "packet_count":  5,
+                         "encrypted":  true,
+                         "tls_versions":  [
+                                              "TLS 1.0",
+                                              "SSL 3.0",
+                                              "TLS 1.1"
+                                          ]
+                     },
+                     {
+                         "id":  "session_3",
+                         "protocol":  "POP3S",
+                         "src":  "192.168.1.100:50003",
+                         "dst":  "192.168.1.200:995",
+                         "packet_count":  5,
+                         "encrypted":  true,
+                         "tls_versions":  [
+                                              "TLS 1.0",
+                                              "SSL 3.0",
+                                              "TLS 1.1"
+                                          ]
+                     },
+                     {
+                         "id":  "session_4",
+                         "protocol":  "SMTPS",
+                         "src":  "192.168.1.100:50004",
+                         "dst":  "192.168.1.200:465",
+                         "packet_count":  5,
+                         "encrypted":  true,
+                         "tls_versions":  [
+                                              "TLS 1.0",
+                                              "SSL 3.0",
+                                              "TLS 1.1"
+                                          ]
+                     },
+                     {
+                         "id":  "session_5",
+                         "protocol":  "SMTP-Submission",
+                         "src":  "192.168.1.100:50005",
+                         "dst":  "192.168.1.200:587",
+                         "packet_count":  5,
+                         "encrypted":  false,
+                         "tls_versions":  [
+                                              "TLS 1.0",
+                                              "SSL 3.0",
+                                              "TLS 1.1"
+                                          ]
+                     }
+                 ],
+    "certificates":  [
+
+                     ],
+    "tls_handshakes":  [
+                           {
+                               "frame":  "9",
+                               "timestamp":  "2026-10-17T00:37:50.582228000+0530",
+                               "src":  "192.168.1.100",
+                               "dst":  "192.168.1.200",
+                               "src_port":  "50002",
+                               "dst_port":  "993",
+                               "tls_version":  "TLS 1.0",
+                               "handshake_type":  "ClientHello",
+                               "cipher_suites":  [
+                                                     "0x002f",
+                                                     "0x0035",
+                                                     "0x000a"
+                                                 ],
+                               "sni":  ""
+                           },
+                           {
+                               "frame":  "10",
+                               "timestamp":  "2026-10-17T00:37:50.592228000+0530",
+                               "src":  "192.168.1.200",
+                               "dst":  "192.168.1.100",
+                               "src_port":  "993",
+                               "dst_port":  "50002",
+                               "tls_version":  "TLS 1.0",
+                               "handshake_type":  "ServerHello",
+                               "cipher_suites":  [
+                                                     "0x002f"
+                                                 ],
+                               "sni":  ""
+                           },
+                           {
+                               "frame":  "14",
+                               "timestamp":  "2026-10-17T00:37:50.632228000+0530",
+                               "src":  "192.168.1.100",
+                               "dst":  "192.168.1.200",
+                               "src_port":  "50003",
+                               "dst_port":  "995",
+                               "tls_version":  "TLS 1.1",
+                               "handshake_type":  "ClientHello",
+                               "cipher_suites":  [
+                                                     "0x002f",
+                                                     "0x0035",
+                                                     "0x000a"
+                                                 ],
+                               "sni":  ""
+                           },
+                           {
+                               "frame":  "15",
+                               "timestamp":  "2026-10-17T00:37:50.642228000+0530",
+                               "src":  "192.168.1.200",
+                               "dst":  "192.168.1.100",
+                               "src_port":  "995",
+                               "dst_port":  "50003",
+                               "tls_version":  "TLS 1.1",
+                               "handshake_type":  "ServerHello",
+                               "cipher_suites":  [
+                                                     "0x002f"
+                                                 ],
+                               "sni":  ""
+                           },
+                           {
+                               "frame":  "19",
+                               "timestamp":  "2026-10-17T00:37:50.682228000+0530",
+                               "src":  "192.168.1.100",
+                               "dst":  "192.168.1.200",
+                               "src_port":  "50004",
+                               "dst_port":  "465",
+                               "tls_version":  "SSL 3.0",
+                               "handshake_type":  "ClientHello",
+                               "cipher_suites":  [
+                                                     "0x0004",
+                                                     "0x0005"
+                                                 ],
+                               "sni":  ""
+                           },
+                           {
+                               "frame":  "20",
+                               "timestamp":  "2026-10-17T00:37:50.692228000+0530",
+                               "src":  "192.168.1.200",
+                               "dst":  "192.168.1.100",
+                               "src_port":  "465",
+                               "dst_port":  "50004",
+                               "tls_version":  "SSL 3.0",
+                               "handshake_type":  "ServerHello",
+                               "cipher_suites":  [
+                                                     "0x0004"
+                                                 ],
+                               "sni":  ""
+                           }
+                       ],
+    "upload_timestamp":  "2026-10-17T00:45:20.591089",
+    "original_filename":  "SecureMailScope_Comprehensive_Demo.pcap",
+    "file_size":  2233,
+    "status":  "completed"
+}

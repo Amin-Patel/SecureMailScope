@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import '../pages/Dashboard.css';
-import { getAnalysisResults, getAnalyses, downloadReport, viewReportHtml } from '../utils/api';
+import { getAnalysisResults, getAnalyses } from '../utils/api';
 import { DashboardCharts } from './DashboardCharts';
 import { AIExplanation } from './AIExplanation';
 import { RemediationCard } from './RemediationCard';
 import { CertificateViewer } from './CertificateViewer';
-import { EmailAuthPanel, EmailAuthEvidence } from './EmailAuthPanel';
 import { FindingModal } from './FindingModal';
 import { SessionTimeline } from './SessionTimeline';
 import { ReportExportModal } from './ReportExportModal';
 import { PrintableReport } from './PrintableReport';
+import EmailAuthPanel from './EmailAuthPanel';
 
 const SEVERITY_ORDER = {
   CRITICAL: 1,
@@ -46,7 +46,6 @@ export function Dashboard() {
   const [riskInfo, setRiskInfo] = useState({
     risk_score: 0,
     risk_level: 'UNKNOWN',
-    risk_grade: '',
     critical_count: 0,
     high_count: 0,
     medium_count: 0,
@@ -109,7 +108,6 @@ export function Dashboard() {
           setRiskInfo({
             risk_score: backendRisk.risk_score ?? summary.risk_score ?? 0,
             risk_level: backendRisk.risk_level || summary.risk_level || 'UNKNOWN',
-            risk_grade: backendRisk.risk_grade || '',
             critical_count: backendRisk.critical_count ?? critical,
             high_count: backendRisk.high_count ?? high,
             medium_count: backendRisk.medium_count ?? med,
@@ -226,7 +224,7 @@ export function Dashboard() {
           activeJobId={activeJobId}
         />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 12, width: '100%', maxWidth: '1360px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 12, width: '100%', maxWidth: '1200px' }}>
           <h1 className="no-print" style={{
             background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)',
             WebkitBackgroundClip: 'text',
@@ -280,28 +278,19 @@ export function Dashboard() {
                     zIndex: 9999,
                     boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)'
                   }}>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setReportDropdownOpen(false);
-                        try {
-                          await viewReportHtml(activeJobId);
-                        } catch (err) {
-                          console.error('Failed to view HTML report:', err);
-                        }
-                      }}
+                    <a
+                      href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=html`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setReportDropdownOpen(false)}
                       style={{
-                        width: '100%',
-                        background: 'none',
-                        border: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
                         padding: '10px 16px',
                         color: 'rgba(255, 255, 255, 0.9)',
                         fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
+                        textDecoration: 'none',
                         transition: 'background 0.2s',
                         fontWeight: 600
                       }}
@@ -310,60 +299,19 @@ export function Dashboard() {
                     >
                       <i className="fa-solid fa-print" style={{ color: '#a5b4fc', width: '14px' }}></i>
                       <span>View / Print Executive Report</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setReportDropdownOpen(false);
-                        try {
-                          await downloadReport(activeJobId, 'pdf');
-                        } catch (err) {
-                          console.error('Failed to download PDF report:', err);
-                        }
-                      }}
+                    </a>
+                    <a
+                      href={`http://localhost:8001/api/analysis/${activeJobId}/report?format=json`}
+                      download
+                      onClick={() => setReportDropdownOpen(false)}
                       style={{
-                        width: '100%',
-                        background: 'none',
-                        border: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
                         padding: '10px 16px',
                         color: 'rgba(255, 255, 255, 0.9)',
                         fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                        fontWeight: 600
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <i className="fa-solid fa-file-pdf" style={{ color: '#f87171', width: '14px' }}></i>
-                      <span>Download PDF Report</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setReportDropdownOpen(false);
-                        try {
-                          await downloadReport(activeJobId, 'json');
-                        } catch (err) {
-                          console.error('Failed to download JSON report:', err);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        background: 'none',
-                        border: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '10px 16px',
-                        color: 'rgba(255, 255, 255, 0.9)',
-                        fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
+                        textDecoration: 'none',
                         transition: 'background 0.2s',
                         fontWeight: 600
                       }}
@@ -372,7 +320,7 @@ export function Dashboard() {
                     >
                       <i className="fa-solid fa-download" style={{ color: '#10b981', width: '14px' }}></i>
                       <span>Download SIEM JSON</span>
-                    </button>
+                    </a>
                     <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
                     <button
                       onClick={() => {
@@ -470,11 +418,6 @@ export function Dashboard() {
                 <div style={{ marginTop: '-8px', textAlign: 'center' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 800, color: riskColor, margin: 0, textShadow: `0 0 16px ${riskColor}88`, letterSpacing: '0.04em' }}>
                     {riskLabel} RISK
-                    {riskInfo.risk_grade && (
-                      <span style={{ marginLeft: 10, padding: '2px 10px', borderRadius: 6, border: `1px solid ${riskColor}`, fontSize: 16 }}>
-                        Grade {riskInfo.risk_grade}
-                      </span>
-                    )}
                   </h3>
                 </div>
               </div>
@@ -511,7 +454,7 @@ export function Dashboard() {
           <DashboardCharts jobId={activeJobId} />
 
           {/* Interactive Session Timeline */}
-          <SessionTimeline sessions={rawResults?.sessions || []} />
+          <SessionTimeline sessions={rawResults?.sessions || []} captureId={activeJobId} />
 
           {/* Security Findings Section with AI Explanation & Modal trigger */}
           <div className="glass-card">
@@ -531,95 +474,84 @@ export function Dashboard() {
                 No security violations detected in this capture.
               </p>
             ) : (
-              <div
-                className="findings-scroll"
-                style={{
-                  maxHeight: 560,
-                  overflowY: 'auto',
-                  paddingRight: 6,
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgba(99, 102, 241, 0.4) transparent',
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {findings.map((f, idx) => {
-                    const sevLower = (f.severity || '').toLowerCase();
-                    const sevLabel = f.severity || 'UNKNOWN';
-                    return (
-                      <div
-                        key={f.id || idx}
-                        onClick={() => setSelectedFinding(f)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
-                          borderRadius: 12,
-                          padding: 16,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                          e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                          <div>
-                            <span className={`badge badge-${sevLower}`} style={{ marginRight: 8 }}>{sevLabel}</span>
-                            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{f.id}</span>
-                            <h4 style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 6, marginBottom: 4 }}>
-                              {f.title}
-                            </h4>
-                          </div>
-                          <button
-                            type="button"
-                            style={{
-                              background: 'rgba(99, 102, 241, 0.15)',
-                              border: '1px solid rgba(99, 102, 241, 0.3)',
-                              color: '#a5b4fc',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <span>Full Detail</span>
-                            <i className="fa-solid fa-up-right-from-square" style={{ fontSize: '10px' }} />
-                          </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {findings.map((f, idx) => {
+                  const sevLower = (f.severity || '').toLowerCase();
+                  const sevLabel = f.severity || 'UNKNOWN';
+                  return (
+                    <div
+                      key={f.id || idx}
+                      onClick={() => setSelectedFinding(f)}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: 12,
+                        padding: 16,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                        <div>
+                          <span className={`badge badge-${sevLower}`} style={{ marginRight: 8 }}>{sevLabel}</span>
+                          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{f.id}</span>
+                          <h4 style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 6, marginBottom: 4 }}>
+                            {f.title}
+                          </h4>
                         </div>
-
-                        {f.description && (
-                          <p style={{ fontSize: 13, color: '#e4e4e7', marginBottom: 10, lineHeight: 1.5 }}>
-                            {f.description}
-                          </p>
-                        )}
-
-                        {f.evidence && (
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-                              Deterministic Evidence
-                            </div>
-                            <div className="code-block" style={{ fontSize: 12, background: 'rgba(0, 0, 0, 0.4)', padding: '8px 12px', borderRadius: 8, color: '#a1a1aa' }}>
-                              {f.evidence}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* AI Explanation Panel */}
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <AIExplanation finding={f} />
-                        </div>
+                        <button
+                          type="button"
+                          style={{
+                            background: 'rgba(99, 102, 241, 0.15)',
+                            border: '1px solid rgba(99, 102, 241, 0.3)',
+                            color: '#a5b4fc',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <span>Full Detail</span>
+                          <i className="fa-solid fa-up-right-from-square" style={{ fontSize: '10px' }} />
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {f.description && (
+                        <p style={{ fontSize: 13, color: '#e4e4e7', marginBottom: 10, lineHeight: 1.5 }}>
+                          {f.description}
+                        </p>
+                      )}
+
+                      {f.evidence && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                            Deterministic Evidence
+                          </div>
+                          <div className="code-block" style={{ fontSize: 12, background: 'rgba(0, 0, 0, 0.4)', padding: '8px 12px', borderRadius: 8, color: '#a1a1aa' }}>
+                            {f.evidence}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* AI Explanation Panel */}
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <AIExplanation finding={f} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -642,29 +574,44 @@ export function Dashboard() {
                 No certificates detected in this capture
               </p>
             ) : (
-              <div
-                className="findings-scroll"
-                style={{
-                  maxHeight: 340,
-                  overflowY: 'auto',
-                  paddingRight: 6,
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgba(99, 102, 241, 0.4) transparent',
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {certificates.map((cert, idx) => (
-                    <CertificateViewer key={cert.serial || idx} certificate={cert} />
-                  ))}
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {certificates.map((cert, idx) => (
+                  <CertificateViewer key={cert.serial || idx} certificate={cert} />
+                ))}
               </div>
             )}
           </div>
 
-          {/* Grouped Email Authentication Section */}
-          <div className="email-auth-grid">
-            <EmailAuthEvidence emailAuth={rawResults?.email_auth} />
-            <EmailAuthPanel key={activeJobId} certificates={certificates} emailAuth={rawResults?.email_auth} />
+          {/* Recent Analyses */}
+          <div className="glass-card">
+            <div className="card-title">
+              <i className="fa-solid fa-clock-rotate-left"></i> Recent Analyses
+            </div>
+            <div className="analyses-list">
+              {recentAnalyses.length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>No recent captures found.</p>
+              ) : (
+                recentAnalyses.slice(0, 4).map(item => {
+                  const ts = item.timestamp ? new Date(item.timestamp) : null;
+                  const dateStr = ts && !isNaN(ts.getTime())
+                    ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '--';
+                  return (
+                    <div key={item.capture_id} className="analysis-row">
+                      <div className="analysis-info">
+                        <span className="analysis-name">{item.filename || 'Unknown Capture'}</span>
+                        <div className="analysis-meta">
+                          <span>ID: #{item.capture_id}</span>{' '}
+                          <span>{dateStr}</span>{' '}
+                          <span>{item.session_count ?? 0} Sessions</span>
+                        </div>
+                      </div>
+                      <Link to={`/analysis?job=${item.capture_id}`} className="btn-small">View</Link>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </section>
 
@@ -716,42 +663,16 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Recent Analyses */}
-          <div className="glass-card">
-            <div className="card-title">
-              <i className="fa-solid fa-clock-rotate-left"></i> Recent Analyses
-            </div>
-            <div className="analyses-list">
-              {recentAnalyses.length === 0 ? (
-                <p style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>No recent captures found.</p>
-              ) : (
-                recentAnalyses.slice(0, 4).map(item => {
-                  const ts = item.timestamp ? new Date(item.timestamp) : null;
-                  const dateStr = ts && !isNaN(ts.getTime())
-                    ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                    : '--';
-                  return (
-                    <div key={item.capture_id} className="analysis-row">
-                      <div className="analysis-info">
-                        <span className="analysis-name">{item.filename || 'Unknown Capture'}</span>
-                        <div className="analysis-meta">
-                          <span>ID: #{item.capture_id}</span>{' '}
-                          <span>{dateStr}</span>{' '}
-                          <span>{item.session_count ?? 0} Sessions</span>
-                        </div>
-                      </div>
-                      <Link to={`/analysis?job=${item.capture_id}`} className="btn-small">View</Link>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          {/* Active Email Authentication Check (SPF / DKIM / DMARC) */}
+          <EmailAuthPanel
+            certificates={certificates}
+            emailAuth={rawResults?.email_auth}
+          />
         </section>
       </div>
 
       {/* Global Action Plan Section (Consolidated Roadmap at Bottom of Dashboard) */}
-      <div style={{ width: '100%', maxWidth: '1360px' }}>
+      <div style={{ width: '100%', maxWidth: '1200px' }}>
         <div className="glass-card" style={{ width: '100%', margin: 0 }}>
           <div className="card-title" style={{ justifyContent: 'space-between', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -774,21 +695,10 @@ export function Dashboard() {
               No security remediation actions required for this capture.
             </p>
           ) : (
-            <div
-              className="findings-scroll"
-              style={{
-                maxHeight: 400,
-                overflowY: 'auto',
-                paddingRight: 6,
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(99, 102, 241, 0.4) transparent',
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {sortedFindings.map((f, idx) => (
-                  <RemediationCard key={f.id || idx} finding={f} />
-                ))}
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {sortedFindings.map((f, idx) => (
+                <RemediationCard key={f.id || idx} finding={f} />
+              ))}
             </div>
           )}
         </div>

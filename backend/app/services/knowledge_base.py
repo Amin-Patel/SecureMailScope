@@ -14,7 +14,85 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import chromadb
+try:
+    import chromadb
+    HAS_CHROMADB = True
+except ImportError:
+    HAS_CHROMADB = False
+
+    class _InMemoryCollection:
+        def __init__(self, name: str):
+            self.name = name
+            self.records = {}  # id -> {embedding, document, metadata}
+
+        def upsert(self, ids, embeddings, documents, metadatas):
+            for i, emb, doc, meta in zip(ids, embeddings, documents, metadatas):
+                self.records[i] = {
+                    "id": i,
+                    "embedding": emb,
+                    "document": doc,
+                    "metadata": meta
+                }
+
+        def get(self, ids=None, include=None):
+            matched = []
+            if ids:
+                for target_id in ids:
+                    if target_id in self.records:
+                        matched.append(self.records[target_id])
+            else:
+                matched = list(self.records.values())
+
+            return {
+                "ids": [r["id"] for r in matched],
+                "metadatas": [r["metadata"] for r in matched],
+                "documents": [r["document"] for r in matched]
+            }
+
+        def count(self):
+            return len(self.records)
+
+        def query(self, query_embeddings, n_results=3, where=None):
+            if not query_embeddings or not self.records:
+                return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+            q_emb = query_embeddings[0]
+            scores = []
+            for r in self.records.values():
+                meta = r["metadata"]
+                if where:
+                    skip = False
+                    for k, v in where.items():
+                        if meta.get(k) != v:
+                            skip = True
+                            break
+                    if skip:
+                        continue
+                # Cosine similarity
+                emb = r["embedding"]
+                dot = sum(a * b for a, b in zip(q_emb, emb))
+                norm_a = sum(a * a for a in q_emb) ** 0.5
+                norm_b = sum(b * b for b in emb) ** 0.5
+                sim = dot / (norm_a * norm_b) if (norm_a and norm_b) else 0.0
+                dist = max(0.0, 1.0 - sim)
+                scores.append((dist, r["document"], meta))
+
+            scores.sort(key=lambda x: x[0])
+            top = scores[:n_results]
+            return {
+                "documents": [[x[1] for x in top]],
+                "metadatas": [[x[2] for x in top]],
+                "distances": [[x[0] for x in top]]
+            }
+
+    class _InMemoryChromaClient:
+        def __init__(self, *args, **kwargs):
+            self.collections = {}
+
+        def get_or_create_collection(self, name, metadata=None):
+            if name not in self.collections:
+                self.collections[name] = _InMemoryCollection(name)
+            return self.collections[name]
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -52,10 +130,13 @@ class KnowledgeBase:
             print("[*] No Gemini API key detected. Knowledge base using Offline Lexical Retrieval Engine.")
 
         STORE_DIR.mkdir(exist_ok=True)
-        self._chroma = chromadb.PersistentClient(
-            path=str(STORE_DIR),
-            settings=chromadb.Settings(anonymized_telemetry=False),
-        )
+        if HAS_CHROMADB:
+            self._chroma = chromadb.PersistentClient(
+                path=str(STORE_DIR),
+                settings=chromadb.Settings(anonymized_telemetry=False),
+            )
+        else:
+            self._chroma = _InMemoryChromaClient()
 
         # Collection is named per embedding mode so switching modes across restarts
         # never mixes incompatible vector spaces/dimensions -- it just re-seeds fresh.
