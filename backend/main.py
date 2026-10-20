@@ -620,9 +620,11 @@ def _delete_single_analysis(capture_id: str, requesting_user_id: Optional[str]) 
     with open(results_file, "r") as f:
         data = json.load(f)
         
-    # Owner check or demo check
+    # Deletion always requires an authenticated owner. Demo records are public to
+    # read, but anyone may not delete them: without this, a missing user id skipped
+    # the check entirely and allowed anonymous deletion of any record.
     owner = data.get("owner_user_id")
-    if requesting_user_id and owner != requesting_user_id:
+    if not requesting_user_id or owner != requesting_user_id:
         return False
 
     deleted = False
@@ -645,9 +647,12 @@ def _delete_single_analysis(capture_id: str, requesting_user_id: Optional[str]) 
 async def delete_analysis(
     request: Request,
     capture_id: str,
-    optional_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Delete a specific completed analysis record and its uploaded files."""
+    """Delete a specific completed analysis record and its uploaded files.
+
+    Reading analyses stays public for demo captures; deleting never is.
+    """
     cid = sanitize_capture_id(capture_id)
     results_file = RESULTS_DIR / f"{cid}.json"
     if not results_file.exists():
@@ -656,9 +661,9 @@ async def delete_analysis(
     with open(results_file, "r") as f:
         data = json.load(f)
 
-    user_id = optional_user.get("user_id") if optional_user else None
+    user_id = current_user.get("user_id")
     owner = data.get("owner_user_id")
-    if user_id and owner != user_id:
+    if owner != user_id:
         raise HTTPException(status_code=403, detail="Access denied: You cannot delete another user's analysis.")
 
     _delete_single_analysis(cid, user_id)
@@ -670,11 +675,14 @@ async def delete_analysis(
 async def delete_analyses_batch(
     request: Request,
     req: BatchDeleteRequest,
-    optional_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Selectively delete multiple analysis records in bulk."""
+    """Selectively delete multiple analysis records in bulk.
+
+    Each record is still ownership-checked individually in _delete_single_analysis.
+    """
     deleted_ids = []
-    user_id = optional_user.get("user_id") if optional_user else None
+    user_id = current_user.get("user_id")
     for cid in req.capture_ids:
         try:
             clean_id = sanitize_capture_id(cid)
